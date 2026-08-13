@@ -102,3 +102,8 @@ def calculate_team_strength(starting_xi):
 
     total_rating = sum(player["overall"] for player in starting_xi)
     return round(total_rating / 11, 1)
+
+
+def get_best_starting_xi(club):
+    """Return a club's 11 highest-rated players."""
+    return sorted(SQUADS[club], key=lambda player: player["overall"], reverse=True)[:11]
