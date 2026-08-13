@@ -31,6 +31,12 @@ STARTER_POSITIONS = ["GK", "RB", "CB", "CB", "LB", "CM", "CM", "CAM", "RW", "LW"
 STARTER_AGES = [27, 24, 28, 22, 25, 26, 21, 24, 23, 22, 27]
 FIRST_NAMES = ["Alex", "Jamie", "Morgan", "Taylor", "Casey", "Jordan", "Riley", "Avery", "Cameron", "Rowan", "Finley"]
 
+# These extra players give the manager some alternatives when choosing an XI.
+SUBSTITUTE_FIRST_NAMES = ["Charlie", "Sam", "Robin", "Drew"]
+SUBSTITUTE_POSITIONS = ["GK", "CB", "CM", "ST"]
+SUBSTITUTE_AGES = [23, 26, 20, 24]
+SUBSTITUTE_RATING_CHANGES = [-3, -2, -2, -1]
+
 # The surname, overall starting point, and small rating changes make every
 # fictional squad distinct while keeping stronger clubs stronger overall.
 CLUB_DETAILS = {
@@ -58,7 +64,7 @@ CLUB_DETAILS = {
 
 
 def create_squad(surname, base_rating, rating_changes):
-    """Build one easy-to-read 11-player fictional squad."""
+    """Build one easy-to-read fictional squad."""
     squad = []
     for index in range(11):
         squad.append(
@@ -69,11 +75,30 @@ def create_squad(surname, base_rating, rating_changes):
                 "overall": base_rating + rating_changes[index],
             }
         )
+
+    for index in range(len(SUBSTITUTE_FIRST_NAMES)):
+        squad.append(
+            {
+                "name": f"{SUBSTITUTE_FIRST_NAMES[index]} {surname}",
+                "position": SUBSTITUTE_POSITIONS[index],
+                "age": SUBSTITUTE_AGES[index],
+                "overall": base_rating + SUBSTITUTE_RATING_CHANGES[index],
+            }
+        )
     return squad
 
 
-# SQUADS maps every selectable club to its eleven starters.
+# SQUADS maps every selectable club to its full squad.
 SQUADS = {
     club: create_squad(surname, base_rating, rating_changes)
     for club, (surname, base_rating, rating_changes) in CLUB_DETAILS.items()
 }
+
+
+def calculate_team_strength(starting_xi):
+    """Return the average overall rating for a valid starting XI."""
+    if len(starting_xi) != 11:
+        raise ValueError("A starting XI must contain exactly 11 players.")
+
+    total_rating = sum(player["overall"] for player in starting_xi)
+    return round(total_rating / 11, 1)
