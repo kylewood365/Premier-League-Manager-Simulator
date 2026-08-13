@@ -3,6 +3,9 @@
 import math
 import random
 
+from data import calculate_team_strength, get_best_starting_xi
+from league import update_league_table
+
 
 def _score_goals(expected_goals, random_generator):
     """Choose a goal total using a simple Poisson-style calculation."""
@@ -16,34 +19,86 @@ def _score_goals(expected_goals, random_generator):
     return attempts - 1
 
 
-def simulate_match(user_club, opponent, user_strength, opponent_strength, rng=None):
-    """Simulate one home match and return the clubs, score, and outcome."""
+def simulate_match(home_club, away_club, home_strength, away_strength, rng=None):
+    """Simulate one match, including a small advantage for the home club."""
     random_generator = rng or random
 
     # Each rating point changes the expected goals a little. The user's club
     # receives a small home boost, while the limits keep scorelines believable.
-    strength_difference = (user_strength + 2) - opponent_strength
-    user_expected_goals = min(3.5, max(0.25, 1.35 + strength_difference * 0.045))
-    opponent_expected_goals = min(3.5, max(0.25, 1.15 - strength_difference * 0.045))
+    strength_difference = (home_strength + 2) - away_strength
+    home_expected_goals = min(3.5, max(0.25, 1.35 + strength_difference * 0.045))
+    away_expected_goals = min(3.5, max(0.25, 1.15 - strength_difference * 0.045))
 
-    user_score = _score_goals(user_expected_goals, random_generator)
-    opponent_score = _score_goals(opponent_expected_goals, random_generator)
+    home_score = _score_goals(home_expected_goals, random_generator)
+    away_score = _score_goals(away_expected_goals, random_generator)
 
-    if user_score > opponent_score:
-        result = f"{user_club} win"
-        winner = user_club
-    elif opponent_score > user_score:
-        result = f"{opponent} win"
-        winner = opponent
+    if home_score > away_score:
+        result = f"{home_club} win"
+        winner = home_club
+    elif away_score > home_score:
+        result = f"{away_club} win"
+        winner = away_club
     else:
         result = "Draw"
         winner = None
 
     return {
-        "user_club": user_club,
-        "opponent": opponent,
-        "user_score": user_score,
-        "opponent_score": opponent_score,
+        "home_club": home_club,
+        "away_club": away_club,
+        "home_score": home_score,
+        "away_score": away_score,
+        # These aliases keep the original single-match API compatible.
+        "user_club": home_club,
+        "opponent": away_club,
+        "user_score": home_score,
+        "opponent_score": away_score,
         "winner": winner,
         "result": result,
     }
+
+
+def simulate_gameweek(
+    gameweek_number,
+    fixtures,
+    user_club,
+    user_starting_xi,
+    table,
+    completed_gameweeks,
+    rng=None,
+):
+    """Play all ten matches in a gameweek and update the table once."""
+    if gameweek_number in completed_gameweeks:
+        raise ValueError("This gameweek has already been completed.")
+    if not 1 <= gameweek_number <= len(fixtures):
+        raise ValueError("Invalid gameweek number.")
+
+    user_strength = calculate_team_strength(user_starting_xi)
+    strengths = {}
+    for match in fixtures[gameweek_number - 1]:
+        for club in (match["home"], match["away"]):
+            strengths[club] = (
+                user_strength
+                if club == user_club
+                else calculate_team_strength(get_best_starting_xi(club))
+            )
+
+    results = []
+    for fixture in fixtures[gameweek_number - 1]:
+        match = simulate_match(
+            fixture["home"],
+            fixture["away"],
+            strengths[fixture["home"]],
+            strengths[fixture["away"]],
+            rng,
+        )
+        update_league_table(
+            table,
+            match["home_club"],
+            match["away_club"],
+            match["home_score"],
+            match["away_score"],
+        )
+        results.append(match)
+
+    completed_gameweeks.add(gameweek_number)
+    return results
