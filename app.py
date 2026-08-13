@@ -2,12 +2,17 @@ import streamlit as st
 
 from data import CLUBS, SQUADS, calculate_team_strength, get_best_starting_xi
 from game import simulate_match
+from league import create_league_table, get_sorted_league_table, update_league_table
 
 
 # Configure the browser tab and show the app heading.
 st.set_page_config(page_title="Premier League Manager Simulator", page_icon="⚽")
 st.title("Premier League Manager Simulator")
 st.write("Welcome! Choose a Premier League club to begin your management career.")
+
+# Session state keeps results and table statistics when Streamlit reruns the app.
+if "league_table" not in st.session_state:
+    st.session_state["league_table"] = create_league_table(CLUBS)
 
 
 # Let the user choose a club and start their career.
@@ -16,6 +21,8 @@ selected_club = st.selectbox("Choose your club", CLUBS, index=None)
 if st.button("Start Career"):
     if selected_club:
         st.session_state["active_club"] = selected_club
+        st.session_state["league_table"] = create_league_table(CLUBS)
+        st.session_state.pop("last_match", None)
         st.success(f"Welcome to {selected_club}! Your managerial career starts now.")
     else:
         st.warning("Please choose a club before starting your career.")
@@ -76,12 +83,30 @@ if "active_club" in st.session_state:
                     average_rating,
                     opponent_strength,
                 )
-
-                st.subheader("Full Time")
-                st.write(f"**Your club:** {match['user_club']}")
-                st.write(f"**Opponent:** {match['opponent']}")
-                st.metric(
-                    "Final score",
-                    f"{match['user_score']} - {match['opponent_score']}",
+                update_league_table(
+                    st.session_state["league_table"],
+                    match["user_club"],
+                    match["opponent"],
+                    match["user_score"],
+                    match["opponent_score"],
                 )
-                st.success(match["result"])
+                st.session_state["last_match"] = match
+
+        # Keeping this outside the button block makes the result survive reruns.
+        if "last_match" in st.session_state:
+            match = st.session_state["last_match"]
+            st.subheader("Full Time")
+            st.write(f"**Your club:** {match['user_club']}")
+            st.write(f"**Opponent:** {match['opponent']}")
+            st.metric(
+                "Final score",
+                f"{match['user_score']} - {match['opponent_score']}",
+            )
+            st.success(match["result"])
+
+            st.subheader("League Table")
+            st.dataframe(
+                get_sorted_league_table(st.session_state["league_table"]),
+                hide_index=True,
+                use_container_width=True,
+            )
