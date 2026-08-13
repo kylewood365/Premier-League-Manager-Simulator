@@ -1,5 +1,7 @@
 import streamlit as st
 
+from data import CLUBS, SQUADS
+
 
 # Configure the browser tab and show the app heading.
 st.set_page_config(page_title="Premier League Manager Simulator", page_icon="⚽")
@@ -7,36 +9,24 @@ st.title("Premier League Manager Simulator")
 st.write("Welcome! Choose a Premier League club to begin your management career.")
 
 
-# These are the clubs available for the first version of the game.
-clubs = [
-    "Arsenal",
-    "Aston Villa",
-    "Bournemouth",
-    "Brentford",
-    "Brighton",
-    "Burnley",
-    "Chelsea",
-    "Crystal Palace",
-    "Everton",
-    "Fulham",
-    "Leeds United",
-    "Liverpool",
-    "Manchester City",
-    "Manchester United",
-    "Newcastle United",
-    "Nottingham Forest",
-    "Sunderland",
-    "Tottenham Hotspur",
-    "West Ham United",
-    "Wolverhampton Wanderers",
-]
-
-
 # Let the user choose a club and start their career.
-selected_club = st.selectbox("Choose your club", clubs, index=None)
+selected_club = st.selectbox("Choose your club", CLUBS, index=None)
 
 if st.button("Start Career"):
     if selected_club:
         st.success(f"Welcome to {selected_club}! Your managerial career starts now.")
+        st.subheader(f"{selected_club} Squad")
+
+        # Rename the data keys to friendly headings for the squad table.
+        squad_table = [
+            {
+                "Player": player["name"],
+                "Position": player["position"],
+                "Age": player["age"],
+                "Overall": player["overall"],
+            }
+            for player in SQUADS[selected_club]
+        ]
+        st.dataframe(squad_table, hide_index=True, use_container_width=True)
     else:
         st.warning("Please choose a club before starting your career.")
