@@ -2,7 +2,7 @@
 
 import unittest
 
-from data import CLUBS, SQUADS, calculate_team_strength
+from data import CLUBS, SQUADS, calculate_team_strength, get_best_starting_xi
 
 
 class SquadDataTests(unittest.TestCase):
@@ -25,6 +25,17 @@ class SquadDataTests(unittest.TestCase):
     def test_team_strength_requires_exactly_eleven_players(self):
         with self.assertRaisesRegex(ValueError, "exactly 11"):
             calculate_team_strength(SQUADS["Arsenal"][:10])
+
+    def test_best_starting_xi_contains_the_top_eleven_ratings(self):
+        best_xi = get_best_starting_xi("Arsenal")
+
+        self.assertEqual(len(best_xi), 11)
+        self.assertEqual(
+            [player["overall"] for player in best_xi],
+            sorted(
+                [player["overall"] for player in SQUADS["Arsenal"]], reverse=True
+            )[:11],
+        )
 
 
 if __name__ == "__main__":
