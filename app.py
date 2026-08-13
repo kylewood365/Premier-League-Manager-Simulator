@@ -1,41 +1,49 @@
 import streamlit as st
 
-from data import CLUBS, SQUADS, calculate_team_strength, get_best_starting_xi
-from game import simulate_match
-from league import create_league_table, get_sorted_league_table, update_league_table
+from data import CLUBS, SQUADS, calculate_team_strength
+from fixtures import advance_gameweek, generate_fixtures, get_club_fixture
+from game import simulate_gameweek
+from league import create_league_table, get_sorted_league_table
 
 
-# Configure the browser tab and show the app heading.
 st.set_page_config(page_title="Premier League Manager Simulator", page_icon="⚽")
 st.title("Premier League Manager Simulator")
-st.write("Welcome! Choose a Premier League club to begin your management career.")
+st.write("Choose a Premier League club and guide it through a 38-gameweek season.")
 
-# Session state keeps results and table statistics when Streamlit reruns the app.
 if "league_table" not in st.session_state:
     st.session_state["league_table"] = create_league_table(CLUBS)
 
-
-# Let the user choose a club and start their career.
 selected_club = st.selectbox("Choose your club", CLUBS, index=None)
-
 if st.button("Start Career"):
     if selected_club:
+        # A new career always receives a fresh schedule and league table.
         st.session_state["active_club"] = selected_club
+        st.session_state["fixtures"] = generate_fixtures(CLUBS)
+        st.session_state["current_gameweek"] = 1
+        st.session_state["completed_gameweeks"] = set()
         st.session_state["league_table"] = create_league_table(CLUBS)
-        st.session_state.pop("last_match", None)
-        st.success(f"Welcome to {selected_club}! Your managerial career starts now.")
+        st.session_state.pop("gameweek_results", None)
+        st.success(f"Welcome to {selected_club}! Your career starts at Gameweek 1.")
     else:
         st.warning("Please choose a club before starting your career.")
 
-
-# Keep the chosen career visible when a selection causes Streamlit to rerun.
 if "active_club" in st.session_state:
     active_club = st.session_state["active_club"]
     squad = SQUADS[active_club]
+    gameweek = st.session_state["current_gameweek"]
+    fixture = get_club_fixture(st.session_state["fixtures"], gameweek, active_club)
+    is_complete = gameweek in st.session_state["completed_gameweeks"]
+
+    st.header(f"Gameweek {gameweek}")
+    if fixture:
+        venue = "Home" if fixture["home"] == active_club else "Away"
+        opponent = fixture["away"] if venue == "Home" else fixture["home"]
+        st.info(
+            f"Next fixture: **{fixture['home']} vs {fixture['away']}** "
+            f"— {active_club} are **{venue}**"
+        )
 
     st.subheader(f"{active_club} Squad")
-
-    # Rename the data keys to friendly headings for the squad table.
     squad_table = [
         {
             "Player": player["name"],
@@ -47,66 +55,67 @@ if "active_club" in st.session_state:
     ]
     st.dataframe(squad_table, hide_index=True, use_container_width=True)
 
-    st.subheader("Choose Your Starting XI")
-    player_names = [player["name"] for player in squad]
-    selected_names = st.multiselect(
-        "Select exactly 11 players",
-        player_names,
-        key=f"starting_xi_{active_club}",
-    )
+    if not is_complete:
+        st.subheader("Choose Your Starting XI")
+        selected_names = st.multiselect(
+            "Select exactly 11 players",
+            [player["name"] for player in squad],
+            key=f"starting_xi_{active_club}_{gameweek}",
+        )
+        selected_xi = [player for player in squad if player["name"] in selected_names]
 
-    selected_count = len(selected_names)
-    if selected_count < 11:
-        st.warning(f"Select {11 - selected_count} more player(s) to complete your starting XI.")
-    elif selected_count > 11:
-        st.warning(f"Remove {selected_count - 11} player(s). A starting XI must have exactly 11 players.")
-    else:
-        starting_xi = [player for player in squad if player["name"] in selected_names]
-        average_rating = calculate_team_strength(starting_xi)
-        st.success("Your starting XI is ready!")
-        st.metric("Average Overall Rating", f"{average_rating:.1f}")
-        st.metric("Team Strength", f"{average_rating:.1f} / 100")
-
-        st.subheader("Play Your First Match")
-        opponents = [club for club in CLUBS if club != active_club]
-        opponent = st.selectbox("Choose an opponent", opponents, index=None)
-
-        if st.button("Simulate Match"):
-            if opponent is None:
-                st.warning("Please choose an opponent before simulating the match.")
-            else:
-                opponent_xi = get_best_starting_xi(opponent)
-                opponent_strength = calculate_team_strength(opponent_xi)
-                match = simulate_match(
+        if len(selected_xi) < 11:
+            st.warning(f"Select {11 - len(selected_xi)} more player(s) to complete your starting XI.")
+        elif len(selected_xi) > 11:
+            st.warning(f"Remove {len(selected_xi) - 11} player(s). A starting XI must have exactly 11 players.")
+        else:
+            strength = calculate_team_strength(selected_xi)
+            st.success("Your starting XI is ready!")
+            st.metric("Team Strength", f"{strength:.1f} / 100")
+            if st.button("Play Gameweek"):
+                st.session_state["gameweek_results"] = simulate_gameweek(
+                    gameweek,
+                    st.session_state["fixtures"],
                     active_club,
-                    opponent,
-                    average_rating,
-                    opponent_strength,
-                )
-                update_league_table(
+                    selected_xi,
                     st.session_state["league_table"],
-                    match["user_club"],
-                    match["opponent"],
-                    match["user_score"],
-                    match["opponent_score"],
+                    st.session_state["completed_gameweeks"],
                 )
-                st.session_state["last_match"] = match
+                st.rerun()
 
-        # Keeping this outside the button block makes the result survive reruns.
-        if "last_match" in st.session_state:
-            match = st.session_state["last_match"]
-            st.subheader("Full Time")
-            st.write(f"**Your club:** {match['user_club']}")
-            st.write(f"**Opponent:** {match['opponent']}")
-            st.metric(
-                "Final score",
-                f"{match['user_score']} - {match['opponent_score']}",
+    if is_complete:
+        st.subheader(f"Gameweek {gameweek} Results")
+        for result in st.session_state["gameweek_results"]:
+            scoreline = (
+                f"{result['home_club']} {result['home_score']} - "
+                f"{result['away_score']} {result['away_club']}"
             )
-            st.success(match["result"])
+            if active_club in (result["home_club"], result["away_club"]):
+                st.success(f"⭐ **{scoreline}** — Your match")
+            else:
+                st.write(scoreline)
 
-            st.subheader("League Table")
-            st.dataframe(
-                get_sorted_league_table(st.session_state["league_table"]),
-                hide_index=True,
-                use_container_width=True,
+        st.subheader("League Table")
+        st.dataframe(
+            get_sorted_league_table(st.session_state["league_table"]),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+        if gameweek < len(st.session_state["fixtures"]):
+            next_fixture = get_club_fixture(
+                st.session_state["fixtures"], gameweek + 1, active_club
             )
+            next_venue = "Home" if next_fixture["home"] == active_club else "Away"
+            next_opponent = (
+                next_fixture["away"] if next_venue == "Home" else next_fixture["home"]
+            )
+            st.info(f"Up next: **{next_opponent}** ({next_venue})")
+            if st.button("Continue to next gameweek"):
+                st.session_state["current_gameweek"] = advance_gameweek(
+                    gameweek, st.session_state["completed_gameweeks"]
+                )
+                st.session_state.pop("gameweek_results", None)
+                st.rerun()
+        else:
+            st.success("Season complete! All 38 Premier League gameweeks have been played.")
