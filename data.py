@@ -1,6 +1,5 @@
 """Football data used by the Premier League Manager Simulator."""
 
-
 # Keeping the club list here gives the UI and squad data one shared source.
 CLUBS = [
     "Arsenal",
@@ -25,11 +24,48 @@ CLUBS = [
     "Wolverhampton Wanderers",
 ]
 
+# Transfer budgets are stored as whole pounds so calculations never need floats.
+# The title challengers start with more spending power than smaller clubs.
+CLUB_BUDGETS = {
+    "Arsenal": 120_000_000,
+    "Aston Villa": 75_000_000,
+    "Bournemouth": 35_000_000,
+    "Brentford": 40_000_000,
+    "Brighton": 60_000_000,
+    "Burnley": 30_000_000,
+    "Chelsea": 140_000_000,
+    "Crystal Palace": 50_000_000,
+    "Everton": 40_000_000,
+    "Fulham": 45_000_000,
+    "Leeds United": 40_000_000,
+    "Liverpool": 125_000_000,
+    "Manchester City": 150_000_000,
+    "Manchester United": 130_000_000,
+    "Newcastle United": 110_000_000,
+    "Nottingham Forest": 45_000_000,
+    "Sunderland": 30_000_000,
+    "Tottenham Hotspur": 100_000_000,
+    "West Ham United": 60_000_000,
+    "Wolverhampton Wanderers": 40_000_000,
+}
+
 # A balanced starting shape: one goalkeeper, four defenders, three midfielders,
 # and three forwards.
 STARTER_POSITIONS = ["GK", "RB", "CB", "CB", "LB", "CM", "CM", "CAM", "RW", "LW", "ST"]
 STARTER_AGES = [27, 24, 28, 22, 25, 26, 21, 24, 23, 22, 27]
-FIRST_NAMES = ["Alex", "Jamie", "Morgan", "Taylor", "Casey", "Jordan", "Riley", "Avery", "Cameron", "Rowan", "Finley"]
+FIRST_NAMES = [
+    "Alex",
+    "Jamie",
+    "Morgan",
+    "Taylor",
+    "Casey",
+    "Jordan",
+    "Riley",
+    "Avery",
+    "Cameron",
+    "Rowan",
+    "Finley",
+]
 
 # These extra players give the manager some alternatives when choosing an XI.
 SUBSTITUTE_FIRST_NAMES = ["Charlie", "Sam", "Robin", "Drew"]
@@ -63,6 +99,13 @@ CLUB_DETAILS = {
 }
 
 
+def calculate_player_value(overall, age):
+    """Return a predictable value based on ability and remaining peak years."""
+    ability_value = max(overall - 60, 1) * 2_000_000
+    age_adjustment = max(0, 27 - age) * 1_000_000
+    return ability_value + age_adjustment
+
+
 def create_squad(surname, base_rating, rating_changes):
     """Build one easy-to-read fictional squad."""
     squad = []
@@ -73,6 +116,9 @@ def create_squad(surname, base_rating, rating_changes):
                 "position": STARTER_POSITIONS[index],
                 "age": STARTER_AGES[index],
                 "overall": base_rating + rating_changes[index],
+                "value": calculate_player_value(
+                    base_rating + rating_changes[index], STARTER_AGES[index]
+                ),
             }
         )
 
@@ -83,6 +129,10 @@ def create_squad(surname, base_rating, rating_changes):
                 "position": SUBSTITUTE_POSITIONS[index],
                 "age": SUBSTITUTE_AGES[index],
                 "overall": base_rating + SUBSTITUTE_RATING_CHANGES[index],
+                "value": calculate_player_value(
+                    base_rating + SUBSTITUTE_RATING_CHANGES[index],
+                    SUBSTITUTE_AGES[index],
+                ),
             }
         )
     return squad
