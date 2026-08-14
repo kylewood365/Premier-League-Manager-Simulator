@@ -1,9 +1,93 @@
+from copy import deepcopy
+
 import streamlit as st
 
-from data import CLUBS, SQUADS, calculate_team_strength
+from data import CLUBS, CLUB_BUDGETS, SQUADS, calculate_team_strength
 from fixtures import advance_gameweek, generate_fixtures, get_club_fixture
 from game import simulate_gameweek
 from league import create_league_table, get_sorted_league_table
+from transfer import buy_player, format_money, sell_player
+
+
+def render_transfer_market(active_club, career_squads, squad):
+    st.header("Transfer Market")
+    st.write("Browse players at other Premier League clubs or sell from your squad.")
+    buy_tab, sell_tab = st.tabs(["Buy Players", "Sell Players"])
+
+    with buy_tab:
+        position_options = sorted(
+            {player["position"] for club in CLUBS for player in career_squads[club]}
+        )
+        position_filter = st.selectbox("Position", ["All"] + position_options)
+        club_filter = st.selectbox(
+            "Club", ["All"] + [club for club in CLUBS if club != active_club]
+        )
+        market_players = [
+            (club, player)
+            for club in CLUBS
+            if club != active_club
+            for player in career_squads[club]
+            if position_filter == "All" or player["position"] == position_filter
+            if club_filter == "All" or club == club_filter
+        ]
+        st.dataframe(
+            [
+                {
+                    "Player": player["name"],
+                    "Club": club,
+                    "Position": player["position"],
+                    "Age": player["age"],
+                    "Overall": player["overall"],
+                    "Transfer Value": format_money(player["value"]),
+                }
+                for club, player in market_players
+            ],
+            hide_index=True,
+            use_container_width=True,
+        )
+        player_to_buy = st.selectbox(
+            "Player to buy",
+            [player["name"] for _, player in market_players],
+            index=None,
+        )
+        if st.button("Buy Player", disabled=player_to_buy is None):
+            success, new_budget, message = buy_player(
+                career_squads,
+                active_club,
+                player_to_buy,
+                st.session_state["transfer_budget"],
+            )
+            if success:
+                st.session_state["transfer_budget"] = new_budget
+                st.success(message)
+            else:
+                st.warning(message)
+
+    with sell_tab:
+        player_to_sell = st.selectbox(
+            "Player to sell", [player["name"] for player in squad], index=None
+        )
+        selected_sale = next(
+            (player for player in squad if player["name"] == player_to_sell), None
+        )
+        if selected_sale:
+            st.write(f"Sale value: **{format_money(selected_sale['value'])}**")
+        confirm_sale = st.checkbox("I confirm that I want to sell this player")
+        if st.button(
+            "Sell Player", disabled=player_to_sell is None or not confirm_sale
+        ):
+            success, new_budget, message = sell_player(
+                career_squads,
+                active_club,
+                player_to_sell,
+                st.session_state["transfer_budget"],
+                st.session_state["transfer_pool"],
+            )
+            if success:
+                st.session_state["transfer_budget"] = new_budget
+                st.success(message)
+            else:
+                st.warning(message)
 
 
 st.set_page_config(page_title="Premier League Manager Simulator", page_icon="⚽")
@@ -22,6 +106,9 @@ if st.button("Start Career"):
         st.session_state["current_gameweek"] = 1
         st.session_state["completed_gameweeks"] = set()
         st.session_state["league_table"] = create_league_table(CLUBS)
+        st.session_state["career_squads"] = deepcopy(SQUADS)
+        st.session_state["transfer_budget"] = CLUB_BUDGETS[selected_club]
+        st.session_state["transfer_pool"] = []
         st.session_state.pop("gameweek_results", None)
         st.success(f"Welcome to {selected_club}! Your career starts at Gameweek 1.")
     else:
@@ -29,10 +116,13 @@ if st.button("Start Career"):
 
 if "active_club" in st.session_state:
     active_club = st.session_state["active_club"]
-    squad = SQUADS[active_club]
+    career_squads = st.session_state["career_squads"]
+    squad = career_squads[active_club]
     gameweek = st.session_state["current_gameweek"]
     fixture = get_club_fixture(st.session_state["fixtures"], gameweek, active_club)
     is_complete = gameweek in st.session_state["completed_gameweeks"]
+
+    st.metric("Transfer Budget", format_money(st.session_state["transfer_budget"]))
 
     st.header(f"Gameweek {gameweek}")
     if fixture:
@@ -65,9 +155,13 @@ if "active_club" in st.session_state:
         selected_xi = [player for player in squad if player["name"] in selected_names]
 
         if len(selected_xi) < 11:
-            st.warning(f"Select {11 - len(selected_xi)} more player(s) to complete your starting XI.")
+            st.warning(
+                f"Select {11 - len(selected_xi)} more player(s) to complete your starting XI."
+            )
         elif len(selected_xi) > 11:
-            st.warning(f"Remove {len(selected_xi) - 11} player(s). A starting XI must have exactly 11 players.")
+            st.warning(
+                f"Remove {len(selected_xi) - 11} player(s). A starting XI must have exactly 11 players."
+            )
         else:
             strength = calculate_team_strength(selected_xi)
             st.success("Your starting XI is ready!")
@@ -83,7 +177,11 @@ if "active_club" in st.session_state:
                 )
                 st.rerun()
 
+    if not is_complete:
+        render_transfer_market(active_club, career_squads, squad)
+
     if is_complete:
+        render_transfer_market(active_club, career_squads, squad)
         st.subheader(f"Gameweek {gameweek} Results")
         for result in st.session_state["gameweek_results"]:
             scoreline = (
@@ -118,4 +216,6 @@ if "active_club" in st.session_state:
                 st.session_state.pop("gameweek_results", None)
                 st.rerun()
         else:
-            st.success("Season complete! All 38 Premier League gameweeks have been played.")
+            st.success(
+                "Season complete! All 38 Premier League gameweeks have been played."
+            )
