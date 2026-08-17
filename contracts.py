@@ -55,7 +55,12 @@ def renew_contract(player, extension_years, squad, wage_budget):
 
 
 def process_contracts(squads, free_agents, season, processed_seasons):
-    """Count down contracts once and move expired players to free agency."""
+    """Count down contracts once and move expired players to free agency.
+
+    A minimal academy promotion protects every club from falling below eleven
+    players when several deals expire together. This is a safety net, not a
+    substitute for the manager renewing contracts to preserve squad quality.
+    """
     if season in processed_seasons:
         return None
     events = []
@@ -66,7 +71,17 @@ def process_contracts(squads, free_agents, season, processed_seasons):
                 squad.remove(player)
                 player["club"] = None
                 free_agents.append(player)
-                events.append({"player": player["name"], "club": club, "type": "expired"})
+                event = {"player": player["name"], "club": club, "type": "expired"}
+                if len(squad) < 11:
+                    # Local import avoids the module-level contracts/retirement
+                    # dependency cycle.
+                    from retirement import generate_youth_player
+                    youth = generate_youth_player(
+                        player["position"], (member["name"] for member in squad)
+                    )
+                    squad.append(youth)
+                    event["youth"] = youth
+                events.append(event)
             elif player["contract_years"] == 1:
                 events.append({"player": player["name"], "club": club, "type": "warning"})
     processed_seasons.add(season)
