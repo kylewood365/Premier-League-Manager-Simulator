@@ -10,6 +10,7 @@ from discipline import (
 )
 from fitness import process_gameweek_health
 from league import update_league_table
+from morale import process_match_morale_and_form
 from stats import assign_goalscorers, record_match_statistics
 from tactics import apply_substitutions, tactical_strength, validate_bench, validate_starting_xi
 
@@ -105,6 +106,7 @@ def simulate_gameweek(
     substitutions=None,
     first_half_result=None,
     processed_discipline_gameweeks=None,
+    processed_morale_gameweeks=None,
 ):
     """Play all ten matches in a gameweek and update the table once."""
     if gameweek_number in completed_gameweeks:
@@ -234,6 +236,27 @@ def simulate_gameweek(
                 user_squad, gameweek_number, discipline_weeks, newly_suspended
             )
             user_match["suspension_recovery_events"] = suspension_events["recoveries"]
+        user_match = next(
+            match for match in results
+            if user_club in (match["home_club"], match["away_club"])
+        )
+        user_is_home = user_match["home_club"] == user_club
+        user_score = user_match["home_score"] if user_is_home else user_match["away_score"]
+        opponent_score = user_match["away_score"] if user_is_home else user_match["home_score"]
+        if user_score > opponent_score:
+            result = "win"
+        elif user_score < opponent_score:
+            result = "loss"
+        else:
+            result = "draw"
+        entered = [player for player in second_half_xi if player not in user_starting_xi]
+        process_match_morale_and_form(
+            user_squad, user_starting_xi, entered, bench, result,
+            user_match.get("goal_events", []), user_match.get("card_events", []),
+            gameweek_number,
+            processed_morale_gameweeks if processed_morale_gameweeks is not None else completed_gameweeks,
+            health_events["injuries"], rng,
+        )
     completed_gameweeks.add(gameweek_number)
     for match in results:
         if user_club in (match["home_club"], match["away_club"]):

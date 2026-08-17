@@ -11,6 +11,7 @@ from fixtures import advance_gameweek, generate_fixtures, get_club_fixture
 from fitness import is_available
 from game import simulate_gameweek, simulate_half
 from league import create_league_table, get_sorted_league_table
+from morale import ensure_player_morale_form, form_label, form_score, morale_label
 from progression import process_end_of_season
 from stats import create_player_statistics, get_current_squad_statistics
 from transfer import buy_player, format_money, sell_player, sign_free_agent
@@ -171,6 +172,7 @@ if st.button("Start Career"):
         st.session_state["recorded_stat_gameweeks"] = set()
         st.session_state["processed_health_gameweeks"] = set()
         st.session_state["processed_discipline_gameweeks"] = set()
+        st.session_state["processed_morale_gameweeks"] = set()
         st.session_state["processed_seasons"] = set()
         st.session_state["season_number"] = 1
         st.session_state["career_history"] = []
@@ -250,6 +252,14 @@ if "active_club" in st.session_state:
             "Age": player["age"],
             "Overall": player["overall"],
             "Fitness": player.get("fitness", 100),
+            "Morale": (
+                f"{ensure_player_morale_form(player)['morale']} "
+                f"({morale_label(player['morale'])})"
+            ),
+            "Form": (
+                "N/A" if form_score(player) is None
+                else f"{form_score(player):.1f} ({form_label(form_score(player))})"
+            ),
             "Availability": availability_status(player),
             "Potential": player["potential"],
             "Wage": f"{format_money(player['wage'])}/week",
@@ -261,7 +271,8 @@ if "active_club" in st.session_state:
 
     st.subheader("Player Stats")
     stat_sort = st.selectbox(
-        "Sort player stats by", ["Goals", "Appearances", "Overall", "Player"]
+        "Sort player stats by",
+        ["Goals", "Appearances", "Overall", "Form", "Morale", "Player"],
     )
     stat_rows = get_current_squad_statistics(
         squad, st.session_state["player_statistics"], stat_sort
@@ -369,6 +380,9 @@ if "active_club" in st.session_state:
                     ],
                     processed_discipline_gameweeks=st.session_state.setdefault(
                         "processed_discipline_gameweeks", set()
+                    ),
+                    processed_morale_gameweeks=st.session_state.setdefault(
+                        "processed_morale_gameweeks", set()
                     ),
                     formation=formation,
                     tactical_style=second_style,

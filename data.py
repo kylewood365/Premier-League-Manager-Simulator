@@ -2,6 +2,7 @@
 
 from contracts import calculate_weekly_wage, starting_contract_years
 from fitness import effective_rating
+from morale import ensure_player_morale_form
 
 # Keeping the club list here gives the UI and squad data one shared source.
 CLUBS = [
@@ -128,7 +129,7 @@ def create_squad(surname, base_rating, rating_changes):
         overall = base_rating + rating_changes[index]
         potential = calculate_potential(overall, STARTER_AGES[index])
         squad.append(
-            {
+            ensure_player_morale_form({
                 "name": f"{FIRST_NAMES[index]} {surname}",
                 "position": STARTER_POSITIONS[index],
                 "age": STARTER_AGES[index],
@@ -142,14 +143,14 @@ def create_squad(surname, base_rating, rating_changes):
                 "fitness": 100,
                 "injured": False,
                 "injury_gameweeks": 0,
-            }
+            })
         )
 
     for index in range(len(SUBSTITUTE_FIRST_NAMES)):
         overall = base_rating + SUBSTITUTE_RATING_CHANGES[index]
         potential = calculate_potential(overall, SUBSTITUTE_AGES[index])
         squad.append(
-            {
+            ensure_player_morale_form({
                 "name": f"{SUBSTITUTE_FIRST_NAMES[index]} {surname}",
                 "position": SUBSTITUTE_POSITIONS[index],
                 "age": SUBSTITUTE_AGES[index],
@@ -164,7 +165,7 @@ def create_squad(surname, base_rating, rating_changes):
                 "fitness": 100,
                 "injured": False,
                 "injury_gameweeks": 0,
-            }
+            })
         )
     return squad
 

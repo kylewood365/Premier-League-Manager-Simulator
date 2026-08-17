@@ -3,6 +3,7 @@
 import random
 
 from discipline import availability_status
+from morale import ensure_player_morale_form, form_label, form_score, morale_label
 
 POSITION_SCORING_WEIGHTS = {
     "ST": 10,
@@ -83,6 +84,14 @@ def get_current_squad_statistics(squad, statistics, sort_by="Goals"):
             "Age": player["age"],
             "Overall": player["overall"],
             "Fitness": player.get("fitness", 100),
+            "Morale": (
+                f"{ensure_player_morale_form(player)['morale']} "
+                f"({morale_label(player['morale'])})"
+            ),
+            "Form": (
+                "N/A" if form_score(player) is None
+                else f"{form_score(player):.1f} ({form_label(form_score(player))})"
+            ),
             "Availability": availability_status(player),
             "Potential": player["potential"],
             "Wage": f"£{player['wage']:,}/week",
@@ -96,6 +105,15 @@ def get_current_squad_statistics(squad, statistics, sort_by="Goals"):
     ]
     if sort_by in {"Goals", "Appearances", "Overall"}:
         rows.sort(key=lambda row: (-row[sort_by], row["Player"]))
+    elif sort_by == "Morale":
+        rows.sort(key=lambda row: (-int(row["Morale"].split()[0]), row["Player"]))
+    elif sort_by == "Form":
+        scores = {player["name"]: form_score(player) for player in squad}
+        rows.sort(key=lambda row: (
+            scores[row["Player"]] is None,
+            -(scores[row["Player"]] or 0),
+            row["Player"],
+        ))
     else:
         rows.sort(key=lambda row: row["Player"])
     return rows
