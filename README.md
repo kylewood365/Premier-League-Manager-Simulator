@@ -1,7 +1,7 @@
 # Premier League Manager Simulator
 
-A beginner-friendly, fictional Premier League management simulator. Pick one
-of 20 fictional squads and build a persistent career across complete
+A beginner-friendly Premier League management simulator. Pick one
+of 20 squads and build a persistent career across complete
 38-gameweek double round-robin seasons.
 
 ## Features
@@ -12,6 +12,21 @@ of 20 fictional squads and build a persistent career across complete
 - Transfers, AI offers, free agents, contracts, wages and scouting
 - Squad roles, development, aging, retirements and unique youth replacements
 - Persistent dashboards and multi-season career history
+- Real Premier League Squads snapshots or a fully offline fictional database
+
+## Career databases
+
+**Real Premier League Squads** uses API-Football for the starting club and
+player identities and registered squads. The simulator calculates its own
+ratings, values and wages from the available performance data; these are not
+official ratings or financial figures. The data is copied into an independent
+snapshot when the career begins. From kickoff onward, transfers, development,
+contracts, injuries, retirements and later seasons belong solely to the saved
+simulation and are never continuously synchronized with real life.
+
+Set `API_FOOTBALL_KEY` in Streamlit secrets to start a Real Squads career. The
+key is required only for this mode. **Fictional Squads** remains available as
+the original offline experience and does not require API configuration.
 
 ## How to play
 

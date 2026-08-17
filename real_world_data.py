@@ -33,6 +33,14 @@ def _api_key():
     return str(key)
 
 
+def is_api_configured():
+    """Report whether Real Squads can be offered as the default database."""
+    try:
+        return bool(st.secrets["API_FOOTBALL_KEY"])
+    except (KeyError, FileNotFoundError):
+        return False
+
+
 def _request(path, params, api_key):
     """Make one API request and turn service failures into friendly errors."""
     try:
