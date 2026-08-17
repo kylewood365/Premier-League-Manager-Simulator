@@ -17,6 +17,8 @@ class StreamlitFlowTests(unittest.TestCase):
         app = AppTest.from_file("app.py").run()
         app.selectbox[0].select("Arsenal")
         app.button[0].click().run()
+        self.assertIn("Arsenal Manager Dashboard", [heading.value for heading in app.header])
+        app.sidebar.radio[0].set_value("Matchday").run()
         app.multiselect[0].set_value(
             [player["name"] for player in SQUADS["Arsenal"][:11]]
         ).run()
