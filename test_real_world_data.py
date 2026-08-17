@@ -83,3 +83,22 @@ def test_cached_helpers_have_twenty_four_hour_ttl_and_public_calls_reuse_them():
     ) as cached:
         assert real.get_premier_league_teams()[0]["name"] == "Club"
         cached.assert_called_once_with("secret")
+
+
+def test_player_statistics_pagination_fetches_exact_pages_and_combines():
+    pages = {
+        1: ([{"player": {"id": 1}, "statistics": [{"games": {"appearences": 2}}]}], {"total": 2}),
+        2: ([{"player": {"id": 2}, "statistics": [{"games": {"minutes": 90}}]}], {"total": 2}),
+    }
+    with patch.object(real, "_request_page", side_effect=lambda path, params, key: pages[params["page"]]) as request:
+        result = real._cached_player_statistics.__wrapped__("configured-secret")
+    assert [row["api_player_id"] for row in result] == [1, 2]
+    assert request.call_count == 2
+    assert all(call.args[2] == "configured-secret" for call in request.call_args_list)
+
+
+def test_statistics_join_is_by_id_and_keeps_missing_players():
+    squad = [{"api_player_id": 1, "name": "Same"}, {"api_player_id": 2, "name": "Same"}]
+    joined = real.join_squad_statistics(squad, [{"api_player_id": 2, "goals": 4}])
+    assert joined[0]["statistics"] == {}
+    assert joined[1]["statistics"]["goals"] == 4

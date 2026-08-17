@@ -38,7 +38,11 @@ from tactics import (
 )
 from dashboard import NAVIGATION, initialise_navigation, render_dashboard
 from ui_styles import apply_global_styles
-from real_world_data import RealWorldDataError, get_current_squad, get_premier_league_teams
+from real_world_data import (
+    RealWorldDataError, get_current_squad, get_premier_league_player_statistics,
+    get_premier_league_teams, join_squad_statistics,
+)
+from player_ratings import create_simulator_player
 
 
 def render_real_world_data():
@@ -55,12 +59,41 @@ def render_real_world_data():
             team = choices[club]
             squad = get_current_squad(team["team_id"], team["name"])
             st.subheader(club)
-            st.dataframe([{
-                "Player": player["name"],
-                "Age": player["age"],
-                "Position": player["position"],
-                "Shirt Number": player["shirt_number"],
-            } for player in squad], hide_index=True, use_container_width=True)
+            basic_tab, ratings_tab = st.tabs(["Basic Squad", "Simulator Ratings"])
+            with basic_tab:
+                st.dataframe([{
+                    "Player": player["name"], "Age": player["age"],
+                    "Position": player["position"],
+                    "Shirt Number": player["shirt_number"],
+                } for player in squad], hide_index=True, use_container_width=True)
+            with ratings_tab:
+                st.caption(
+                    "Overall, Potential, Transfer Value and Wage are simulator-generated "
+                    "estimates based on available real-world information and are not official "
+                    "ratings or salary data."
+                )
+                try:
+                    joined = join_squad_statistics(
+                        squad, get_premier_league_player_statistics()
+                    )
+                    rated = [create_simulator_player(player) for player in joined]
+                    st.dataframe([{
+                        "Player": player["name"], "Age": player["age"],
+                        "Position": player["position"], "Overall": player["overall"],
+                        "Potential": player["potential"],
+                        "Transfer Value": format_money(player["transfer_value"]),
+                        "Weekly Wage": f"{format_money(player['weekly_wage'])}/week",
+                    } for player in rated], hide_index=True, use_container_width=True)
+                except RealWorldDataError as exc:
+                    st.warning(f"Simulator ratings are unavailable: {exc}")
+                    st.info("The Basic Squad and your fictional career are unaffected.")
+                with st.expander("How ratings are calculated"):
+                    st.write(
+                        "Each position uses different performance factors. Playing time improves "
+                        "confidence, while very small samples are protected from extreme ratings. "
+                        "Potential is estimated mainly from age and current ability. All ratings "
+                        "are unique to this simulator."
+                    )
     except RealWorldDataError as exc:
         st.warning(str(exc))
         st.info("Your fictional career is still available and has not been changed.")
