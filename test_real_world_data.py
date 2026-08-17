@@ -76,12 +76,75 @@ def test_rate_limit_and_empty_response_are_friendly_errors():
             real._request("/teams", {}, "secret")
 
 
+def api_response(errors):
+    response = Mock(status_code=200)
+    response.raise_for_status.return_value = None
+    response.json.return_value = {"errors": errors, "response": []}
+    return response
+
+
+@pytest.mark.parametrize("errors, expected", [
+    ({"plan": "This season is not available on your plan"},
+     "does not allow this season on the current subscription"),
+    ({"token": "Error/Missing application key"},
+     "rejected the configured API key"),
+    ({"requests": "Daily request quota reached"},
+     "request quota has been reached"),
+    ({"parameters": "Invalid league id"},
+     "API-Football error: parameters: Invalid league id"),
+])
+def test_api_error_categories(errors, expected):
+    with patch.object(real.requests, "get", return_value=api_response(errors)):
+        with pytest.raises(real.RealWorldDataError, match=expected):
+            real._request("/teams", {}, "configured-secret")
+
+
+def test_nested_and_list_errors_are_concise_and_readable():
+    errors = {"parameters": {"season": ["Invalid", "Unavailable"]}}
+    assert real.format_api_errors(errors) == (
+        "parameters.season: Invalid; parameters.season: Unavailable"
+    )
+
+
+def test_credentials_are_never_in_displayed_api_errors():
+    secret = "super-secret-api-key"
+    errors = {
+        "debug": f"Rejected credential {secret}",
+        "access_token": "other-token-value",
+    }
+    with patch.object(real.requests, "get", return_value=api_response(errors)):
+        with pytest.raises(real.RealWorldDataError) as raised:
+            real._request("/teams", {}, secret)
+    message = str(raised.value)
+    assert secret not in message
+    assert "other-token-value" not in message
+    assert "raw response" not in message
+
+
+def test_current_season_and_cached_account_diagnostic():
+    assert real.CURRENT_SEASON == 2026
+    rows = [{"league": {"id": 39}}]
+    with patch.object(real, "_request", return_value=rows) as request:
+        assert real._cached_season_diagnostic.__wrapped__("configured-secret")
+    request.assert_called_once_with(
+        "/leagues", {"id": 39, "season": 2026}, "configured-secret"
+    )
+
+
+def test_season_diagnostic_reports_unavailable_season():
+    with patch.object(real, "_request", return_value=[{"league": {"id": 2}}]):
+        with pytest.raises(real.RealWorldDataError, match="season 2026 is unavailable"):
+            real._cached_season_diagnostic.__wrapped__("configured-secret")
+
 def test_cached_helpers_have_twenty_four_hour_ttl_and_public_calls_reuse_them():
     assert real.CACHE_TTL_SECONDS == 86400
     with patch.object(real, "_api_key", return_value="secret"), patch.object(
+        real, "_cached_season_diagnostic", return_value=True
+    ) as diagnostic, patch.object(
         real, "_cached_teams", return_value=[{"team_id": 1, "name": "Club"}]
     ) as cached:
         assert real.get_premier_league_teams()[0]["name"] == "Club"
+        diagnostic.assert_called_once_with("secret")
         cached.assert_called_once_with("secret")
 
 
