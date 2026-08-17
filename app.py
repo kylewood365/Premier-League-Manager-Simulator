@@ -8,11 +8,15 @@ from contracts import calculate_wage_spend, renew_contract, requested_weekly_wag
 from data import CLUBS, CLUB_BUDGETS, CLUB_WAGE_BUDGETS, SQUADS, calculate_team_strength
 from fixtures import advance_gameweek, generate_fixtures, get_club_fixture
 from fitness import is_available
-from game import simulate_gameweek
+from game import simulate_gameweek, simulate_half
 from league import create_league_table, get_sorted_league_table
 from progression import process_end_of_season
 from stats import create_player_statistics, get_current_squad_statistics
 from transfer import buy_player, format_money, sell_player, sign_free_agent
+from tactics import (
+    FORMATIONS, TACTICAL_STYLES, apply_substitutions,
+    validate_bench, validate_starting_xi,
+)
 
 
 def render_transfer_market(active_club, career_squads, squad):
@@ -171,6 +175,7 @@ if st.button("Start Career"):
         st.session_state["retirement_history"] = []
         st.session_state.pop("season_summary", None)
         st.session_state.pop("gameweek_results", None)
+        st.session_state["match_phase"] = "Kickoff"
         st.success(f"Welcome to {selected_club}! Your career starts at Gameweek 1.")
     else:
         st.warning("Please choose a club before starting your career.")
@@ -273,33 +278,83 @@ if "active_club" in st.session_state:
     st.dataframe(stat_rows, hide_index=True, use_container_width=True)
 
     if not is_complete:
-        st.subheader("Choose Your Starting XI")
+        phase = st.session_state.setdefault("match_phase", "Kickoff")
+        st.subheader(f"Match Flow: {phase}")
         available_players = [player for player in squad if is_available(player)]
         if len(available_players) < 11:
             st.error(
                 f"Only {len(available_players)} healthy players are available. "
                 "You cannot play until 11 eligible starters are available."
             )
+        formation = st.selectbox("Formation", list(FORMATIONS), key=f"formation_{gameweek}")
+        style = st.selectbox("Tactical style", TACTICAL_STYLES, key=f"style_{gameweek}")
         selected_names = st.multiselect(
             "Select exactly 11 players",
             [player["name"] for player in available_players],
             key=f"starting_xi_{active_club}_{gameweek}",
+            disabled=phase != "Kickoff",
         )
         selected_xi = [player for player in squad if player["name"] in selected_names]
+        bench_names = st.multiselect(
+            "Bench (up to 7)",
+            [p["name"] for p in available_players if p["name"] not in selected_names],
+            key=f"bench_{active_club}_{gameweek}",
+            max_selections=7,
+            disabled=phase != "Kickoff",
+        )
+        bench = [player for player in squad if player["name"] in bench_names]
 
-        if len(selected_xi) < 11:
-            st.warning(
-                f"Select {11 - len(selected_xi)} more player(s) to complete your starting XI."
-            )
-        elif len(selected_xi) > 11:
-            st.warning(
-                f"Remove {len(selected_xi) - 11} player(s). A starting XI must have exactly 11 players."
-            )
-        else:
+        selection_error = None
+        try:
+            validate_starting_xi(selected_xi, formation)
+            validate_bench(bench, selected_xi)
+        except ValueError as error:
+            selection_error = str(error)
+        if phase == "Kickoff" and selection_error:
+            st.warning(selection_error)
+        elif phase == "Kickoff":
             strength = calculate_team_strength(selected_xi)
             st.success("Your starting XI is ready!")
             st.metric("Team Strength", f"{strength:.1f} / 100")
-            if st.button("Play Gameweek"):
+            if st.button("Kickoff"):
+                opponent_strength = calculate_team_strength(
+                    sorted(career_squads[opponent], key=lambda p: p["overall"], reverse=True)[:11]
+                )
+                if venue == "Home":
+                    first_half = simulate_half(strength, opponent_strength, style, "Balanced")
+                else:
+                    first_half = simulate_half(opponent_strength, strength, "Balanced", style)
+                st.session_state["first_half_result"] = first_half
+                st.session_state["kickoff_style"] = style
+                st.session_state["match_phase"] = "Half-time"
+                st.rerun()
+
+        if phase in {"Half-time", "Second half"}:
+            first = st.session_state["first_half_result"]
+            st.info(f"Half-time: **{fixture['home']} {first['home_score']} - {first['away_score']} {fixture['away']}**")
+            second_style = st.selectbox(
+                "Tactic for the second half", TACTICAL_STYLES,
+                index=TACTICAL_STYLES.index(style), key=f"second_style_{gameweek}",
+            )
+            existing = st.session_state.setdefault("match_substitutions", [])
+            current_pitch = apply_substitutions(selected_xi, bench, existing)
+            used_on = {on for _, on in existing}
+            off = st.selectbox("Player off", [p["name"] for p in current_pitch], index=None)
+            on = st.selectbox(
+                "Player on", [p["name"] for p in bench if p["name"] not in used_on], index=None,
+            )
+            if st.button("Make substitution", disabled=off is None or on is None or len(existing) >= 5):
+                try:
+                    apply_substitutions(selected_xi, bench, existing + [(off, on)])
+                    existing.append((off, on))
+                    st.rerun()
+                except ValueError as error:
+                    st.warning(str(error))
+            st.caption(f"Substitutions used: {len(existing)} / 5")
+            if phase == "Half-time" and st.button("Start Second Half"):
+                st.session_state["match_phase"] = "Second half"
+                st.rerun()
+            if phase == "Second half" and st.button("Full-time"):
                 st.session_state["gameweek_results"] = simulate_gameweek(
                     gameweek,
                     st.session_state["fixtures"],
@@ -313,7 +368,13 @@ if "active_club" in st.session_state:
                     processed_health_gameweeks=st.session_state[
                         "processed_health_gameweeks"
                     ],
+                    formation=formation,
+                    tactical_style=second_style,
+                    bench=bench,
+                    substitutions=existing,
+                    first_half_result=st.session_state["first_half_result"],
                 )
+                st.session_state["match_phase"] = "Full-time"
                 st.rerun()
 
     if not is_complete:
@@ -366,6 +427,8 @@ if "active_club" in st.session_state:
                     gameweek, st.session_state["completed_gameweeks"]
                 )
                 st.session_state.pop("gameweek_results", None)
+                st.session_state["match_phase"] = "Kickoff"
+                st.session_state.pop("match_substitutions", None)
                 st.rerun()
         else:
             # This block is revisited on every Streamlit rerun, so progression.py

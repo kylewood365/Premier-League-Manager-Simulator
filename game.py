@@ -4,9 +4,10 @@ import math
 import random
 
 from data import calculate_team_strength, get_best_starting_xi
-from fitness import is_available, process_gameweek_health
+from fitness import process_gameweek_health
 from league import update_league_table
 from stats import assign_goalscorers, record_match_statistics
+from tactics import apply_substitutions, tactical_strength, validate_bench, validate_starting_xi
 
 
 def _score_goals(expected_goals, random_generator):
@@ -21,18 +22,37 @@ def _score_goals(expected_goals, random_generator):
     return attempts - 1
 
 
-def simulate_match(home_club, away_club, home_strength, away_strength, rng=None):
+def _expected_goals(home_strength, away_strength, home_style, away_style):
+    """Calculate full-match scoring rates with modest tactical adjustments."""
+    home_attack, home_defence = tactical_strength(home_strength, home_style)
+    away_attack, away_defence = tactical_strength(away_strength, away_style)
+    home_difference = (home_attack + 2) - away_defence
+    away_difference = away_attack - (home_defence + 2)
+    return (
+        min(3.5, max(0.25, 1.35 + home_difference * 0.045)),
+        min(3.5, max(0.25, 1.15 + away_difference * 0.045)),
+    )
+
+
+def simulate_half(home_strength, away_strength, home_style="Balanced", away_style="Balanced", rng=None):
+    """Simulate one half, allowing a changed team and tactic after half-time."""
+    random_generator = rng or random
+    home_xg, away_xg = _expected_goals(home_strength, away_strength, home_style, away_style)
+    return {
+        "home_score": _score_goals(home_xg / 2, random_generator),
+        "away_score": _score_goals(away_xg / 2, random_generator),
+    }
+
+
+def simulate_match(home_club, away_club, home_strength, away_strength, rng=None,
+                   home_style="Balanced", away_style="Balanced"):
     """Simulate one match, including a small advantage for the home club."""
     random_generator = rng or random
 
-    # Each rating point changes the expected goals a little. The user's club
-    # receives a small home boost, while the limits keep scorelines believable.
-    strength_difference = (home_strength + 2) - away_strength
-    home_expected_goals = min(3.5, max(0.25, 1.35 + strength_difference * 0.045))
-    away_expected_goals = min(3.5, max(0.25, 1.15 - strength_difference * 0.045))
-
-    home_score = _score_goals(home_expected_goals, random_generator)
-    away_score = _score_goals(away_expected_goals, random_generator)
+    first = simulate_half(home_strength, away_strength, home_style, away_style, random_generator)
+    second = simulate_half(home_strength, away_strength, home_style, away_style, random_generator)
+    home_score = first["home_score"] + second["home_score"]
+    away_score = first["away_score"] + second["away_score"]
 
     if home_score > away_score:
         result = f"{home_club} win"
@@ -56,6 +76,10 @@ def simulate_match(home_club, away_club, home_strength, away_strength, rng=None)
         "opponent_score": away_score,
         "winner": winner,
         "result": result,
+        "first_half_home_score": first["home_score"],
+        "first_half_away_score": first["away_score"],
+        "second_half_home_score": second["home_score"],
+        "second_half_away_score": second["away_score"],
     }
 
 
@@ -71,14 +95,22 @@ def simulate_gameweek(
     recorded_stat_gameweeks=None,
     user_squad=None,
     processed_health_gameweeks=None,
+    formation="4-3-3",
+    tactical_style="Balanced",
+    bench=None,
+    substitutions=None,
+    first_half_result=None,
 ):
     """Play all ten matches in a gameweek and update the table once."""
     if gameweek_number in completed_gameweeks:
         raise ValueError("This gameweek has already been completed.")
     if not 1 <= gameweek_number <= len(fixtures):
         raise ValueError("Invalid gameweek number.")
-    if any(not is_available(player) for player in user_starting_xi):
-        raise ValueError("Injured players cannot be selected in the starting XI.")
+    validate_starting_xi(user_starting_xi, formation)
+    bench = bench or []
+    substitutions = substitutions or []
+    validate_bench(bench, user_starting_xi)
+    second_half_xi = apply_substitutions(user_starting_xi, bench, substitutions)
 
     user_strength = calculate_team_strength(user_starting_xi)
     strengths = {}
@@ -92,13 +124,40 @@ def simulate_gameweek(
 
     results = []
     for fixture in fixtures[gameweek_number - 1]:
-        match = simulate_match(
-            fixture["home"],
-            fixture["away"],
-            strengths[fixture["home"]],
-            strengths[fixture["away"]],
-            rng,
-        )
+        is_user_match = user_club in (fixture["home"], fixture["away"])
+        if is_user_match:
+            second_strength = calculate_team_strength(second_half_xi)
+            home_strength = second_strength if fixture["home"] == user_club else strengths[fixture["home"]]
+            away_strength = second_strength if fixture["away"] == user_club else strengths[fixture["away"]]
+            home_style = tactical_style if fixture["home"] == user_club else "Balanced"
+            away_style = tactical_style if fixture["away"] == user_club else "Balanced"
+            if first_half_result is None:
+                first_half_result = simulate_half(
+                    strengths[fixture["home"]], strengths[fixture["away"]],
+                    home_style, away_style, rng,
+                )
+            second = simulate_half(home_strength, away_strength, home_style, away_style, rng)
+            match = simulate_match(fixture["home"], fixture["away"], home_strength, away_strength, rng)
+            match.update({
+                "first_half_home_score": first_half_result["home_score"],
+                "first_half_away_score": first_half_result["away_score"],
+                "second_half_home_score": second["home_score"],
+                "second_half_away_score": second["away_score"],
+                "home_score": first_half_result["home_score"] + second["home_score"],
+                "away_score": first_half_result["away_score"] + second["away_score"],
+            })
+            if match["home_score"] > match["away_score"]:
+                match.update(winner=match["home_club"], result=f"{match['home_club']} win")
+            elif match["away_score"] > match["home_score"]:
+                match.update(winner=match["away_club"], result=f"{match['away_club']} win")
+            else:
+                match.update(winner=None, result="Draw")
+            match["user_score"] = match["home_score"]
+            match["opponent_score"] = match["away_score"]
+        else:
+            home_style = tactical_style if fixture["home"] == user_club else "Balanced"
+            away_style = tactical_style if fixture["away"] == user_club else "Balanced"
+            match = simulate_match(fixture["home"], fixture["away"], strengths[fixture["home"]], strengths[fixture["away"]], rng, home_style, away_style)
         update_league_table(
             table,
             match["home_club"],
@@ -112,13 +171,12 @@ def simulate_gameweek(
                 if match["home_club"] == user_club
                 else match["away_score"]
             )
-            match["goal_events"] = assign_goalscorers(
-                user_starting_xi, user_goals, rng
-            )
+            participants = user_starting_xi + [player for player in second_half_xi if player not in user_starting_xi]
+            match["goal_events"] = assign_goalscorers(participants, user_goals, rng)
             if player_statistics is not None:
                 record_match_statistics(
                     player_statistics,
-                    user_starting_xi,
+                    participants,
                     match["goal_events"],
                     gameweek_number,
                     recorded_stat_gameweeks
@@ -137,6 +195,7 @@ def simulate_gameweek(
             if processed_health_gameweeks is not None
             else completed_gameweeks,
             rng,
+            substitutes=[player for player in second_half_xi if player not in user_starting_xi],
         )
     completed_gameweeks.add(gameweek_number)
     for match in results:

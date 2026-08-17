@@ -40,7 +40,9 @@ def injury_chance(player):
     return 0.01 + (100 - player["fitness"]) * 0.001
 
 
-def process_gameweek_health(squad, starters, gameweek, processed_gameweeks, rng=None):
+def process_gameweek_health(
+    squad, starters, gameweek, processed_gameweeks, rng=None, substitutes=None
+):
     """Apply fatigue, recovery and injuries exactly once for a gameweek.
 
     Returns injury and recovery events for presentation by the UI.  A newly
@@ -54,6 +56,7 @@ def process_gameweek_health(squad, starters, gameweek, processed_gameweeks, rng=
         ensure_player_health(player)
 
     starter_ids = {id(player) for player in starters}
+    substitute_ids = {id(player) for player in (substitutes or [])}
     previously_injured = {
         id(player) for player in squad if player["injured"]
     }
@@ -75,10 +78,20 @@ def process_gameweek_health(squad, starters, gameweek, processed_gameweeks, rng=
                 "gameweeks": player["injury_gameweeks"],
             })
 
+    # Players entering after kick-off do less work and therefore lose less fitness.
+    for player in substitutes or []:
+        ensure_player_health(player)
+        player["fitness"] = max(0, player["fitness"] - rng.randint(3, 6))
+
     # Everyone gets normal between-match recovery, with rested players gaining
     # more. Starters still finish with a net loss in the usual case.
     for player in squad:
-        recovery = rng.randint(2, 5) if id(player) in starter_ids else rng.randint(7, 12)
+        if id(player) in starter_ids:
+            recovery = rng.randint(2, 5)
+        elif id(player) in substitute_ids:
+            recovery = rng.randint(2, 5)
+        else:
+            recovery = rng.randint(7, 12)
         player["fitness"] = min(100, player["fitness"] + recovery)
 
     recoveries = []
@@ -98,4 +111,3 @@ def reset_health_for_new_season(squad):
     """Begin a new season with every active player fully fit and healthy."""
     for player in squad:
         player.update({"fitness": 100, "injured": False, "injury_gameweeks": 0})
-
