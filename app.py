@@ -6,6 +6,7 @@ from data import CLUBS, CLUB_BUDGETS, SQUADS, calculate_team_strength
 from fixtures import advance_gameweek, generate_fixtures, get_club_fixture
 from game import simulate_gameweek
 from league import create_league_table, get_sorted_league_table
+from progression import process_end_of_season
 from stats import create_player_statistics, get_current_squad_statistics
 from transfer import buy_player, format_money, sell_player
 
@@ -114,6 +115,9 @@ if st.button("Start Career"):
             st.session_state["career_squads"][selected_club]
         )
         st.session_state["recorded_stat_gameweeks"] = set()
+        st.session_state["processed_seasons"] = set()
+        st.session_state["season_number"] = 1
+        st.session_state.pop("season_summary", None)
         st.session_state.pop("gameweek_results", None)
         st.success(f"Welcome to {selected_club}! Your career starts at Gameweek 1.")
     else:
@@ -145,6 +149,7 @@ if "active_club" in st.session_state:
             "Position": player["position"],
             "Age": player["age"],
             "Overall": player["overall"],
+            "Potential": player["potential"],
         }
         for player in squad
     ]
@@ -246,6 +251,43 @@ if "active_club" in st.session_state:
                 st.session_state.pop("gameweek_results", None)
                 st.rerun()
         else:
-            st.success(
-                "Season complete! All 38 Premier League gameweeks have been played."
+            # This block is revisited on every Streamlit rerun, so progression.py
+            # owns the duplicate-protection check before changing any player.
+            if "season_summary" not in st.session_state:
+                summary = process_end_of_season(
+                    career_squads,
+                    active_club,
+                    st.session_state["player_statistics"],
+                    st.session_state["league_table"],
+                    st.session_state["processed_seasons"],
+                    st.session_state["season_number"],
+                )
+                if summary is not None:
+                    st.session_state["season_summary"] = summary
+
+            summary = st.session_state["season_summary"]
+            position = summary["user_position"]
+            suffix = "th" if 10 <= position % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(position % 10, "th")
+            st.header("SEASON COMPLETE")
+            st.success(f"🏆 Premier League Champions: {summary['champion']}")
+            st.write(f"**Your Finish:** {position}{suffix}")
+            st.write(
+                f"**Top Scorer:** {summary['top_scorer']} — "
+                f"{summary['top_scorer_goals']} goals"
             )
+            st.subheader("Player Development")
+            if summary["development"]:
+                st.dataframe(
+                    [
+                        {
+                            "Player": row["player"],
+                            "Overall": f"{row['old_overall']} → {row['new_overall']}",
+                            "Change": f"{row['change']:+d}",
+                        }
+                        for row in summary["development"]
+                    ],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+            else:
+                st.write("No Overall changes this season.")
