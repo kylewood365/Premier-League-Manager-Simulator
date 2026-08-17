@@ -165,3 +165,55 @@ def test_statistics_join_is_by_id_and_keeps_missing_players():
     joined = real.join_squad_statistics(squad, [{"api_player_id": 2, "goals": 4}])
     assert joined[0]["statistics"] == {}
     assert joined[1]["statistics"]["goals"] == 4
+
+
+def test_only_subscription_restriction_activates_seasonless_source():
+    directory = [{"team_id": index + 1, "name": name}
+                 for index, name in enumerate(real.CLUBS)]
+    with patch.object(real, "_api_key", return_value="key"), patch.object(
+        real, "_cached_season_diagnostic", side_effect=real.CurrentSeasonUnavailable("plan")
+    ), patch.object(real, "_cached_english_teams", return_value=directory) as english:
+        mode, teams = real.get_real_data_source()
+    assert mode == "seasonless" and len(teams) == 20
+    english.assert_called_once_with("key")
+
+
+@pytest.mark.parametrize("message", [
+    "API-Football rejected the configured API key.",
+    "API-Football's request quota has been reached.",
+    "API-Football is temporarily unavailable.",
+])
+def test_non_subscription_failures_do_not_activate_fallback(message):
+    with patch.object(real, "_api_key", return_value="key"), patch.object(
+        real, "_cached_season_diagnostic", side_effect=real.RealWorldDataError(message)
+    ), patch.object(real, "_cached_english_teams") as english:
+        with pytest.raises(real.RealWorldDataError, match=message):
+            real.get_real_data_source()
+    english.assert_not_called()
+
+
+def test_fallback_aliases_and_duplicate_and_missing_validation():
+    names = list(real.CLUBS)
+    aliases = {"Brighton": "Brighton Hove Albion", "Leeds United": "Leeds",
+               "Tottenham Hotspur": "Tottenham"}
+    directory = [{"team_id": index + 1, "name": aliases.get(name, name)}
+                 for index, name in enumerate(names)]
+    assert [team["name"] for team in real.resolve_fallback_teams(directory)] == names
+    with pytest.raises(real.RealWorldDataError, match="Arsenal"):
+        real.resolve_fallback_teams(directory[1:])
+    directory[1]["team_id"] = directory[0]["team_id"]
+    with pytest.raises(real.RealWorldDataError, match="duplicate API team ID"):
+        real.resolve_fallback_teams(directory)
+
+
+def test_english_directory_endpoint_and_uncached_squad_pacing():
+    with patch.object(real, "_request", return_value=[{"team": {"id": 1, "name": "A"}}]) as request:
+        assert real._cached_english_teams.__wrapped__("key") == [{"team_id": 1, "name": "A"}]
+    request.assert_called_once_with("/teams", {"country": "England"}, "key")
+    rows = [{"players": [{"id": 2, "name": "P", "position": "Defender"}]}]
+    with patch.object(real, "pace_uncached_request") as pace, patch.object(
+        real, "_request", return_value=rows
+    ) as request:
+        real._cached_squad.__wrapped__(1, "A", "key", True)
+    pace.assert_called_once_with()
+    request.assert_called_once_with("/players/squads", {"team": 1}, "key")

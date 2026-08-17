@@ -4,8 +4,13 @@ This module deliberately returns new, normalized dictionaries.  API responses
 are never placed in the mutable fictional career squads.
 """
 
+import re
+import time
+
 import requests
 import streamlit as st
+
+from data import CLUBS
 
 
 BASE_URL = "https://v3.football.api-sports.io"
@@ -17,6 +22,10 @@ REQUEST_TIMEOUT_SECONDS = 15
 
 class RealWorldDataError(Exception):
     """A friendly, recoverable problem while loading real-world data."""
+
+
+class CurrentSeasonUnavailable(RealWorldDataError):
+    """The configured subscription specifically cannot access season 2026."""
 
 
 def format_api_errors(errors, secrets=()):
@@ -282,27 +291,92 @@ def _cached_teams(api_key):
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
 def _cached_season_diagnostic(api_key):
     """Verify that this account can access the configured league season."""
-    rows = _request(
-        "/leagues", {"id": PREMIER_LEAGUE_ID, "season": CURRENT_SEASON}, api_key
-    )
+    try:
+        rows = _request(
+            "/leagues", {"id": PREMIER_LEAGUE_ID, "season": CURRENT_SEASON}, api_key
+        )
+    except RealWorldDataError as exc:
+        if "does not allow this season on the current subscription" in str(exc):
+            raise CurrentSeasonUnavailable(str(exc)) from exc
+        raise
     if not any(
         isinstance(row, dict)
         and row.get("league", {}).get("id") == PREMIER_LEAGUE_ID
         for row in rows
     ):
-        raise RealWorldDataError(
+        raise CurrentSeasonUnavailable(
             f"API-Football season {CURRENT_SEASON} is unavailable to the configured account."
         )
     return True
 
 
+def pace_uncached_request(sleep=time.sleep):
+    """Conservatively keep free-plan squad traffic below ten requests/minute."""
+    sleep(6.1)
+
+
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
-def _cached_squad(team_id, club, api_key):
+def _cached_squad(team_id, club, api_key, paced=False):
+    # A cached function's body runs only on a miss, so cached reruns never sleep.
+    if paced:
+        pace_uncached_request()
     rows = _request("/players/squads", {"team": team_id}, api_key)
     players = parse_squad(rows, team_id, club)
     if not players:
         raise RealWorldDataError(f"No registered squad was found for {club}.")
     return players
+
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+def _cached_english_teams(api_key):
+    teams = parse_teams(_request("/teams", {"country": "England"}, api_key))
+    if not teams:
+        raise RealWorldDataError("No English club directory was returned by API-Football.")
+    return teams
+
+
+CLUB_ALIASES = {
+    "brighton": "brighton hove albion",
+    "brighton and hove albion": "brighton hove albion",
+    "coventry city": "coventry",
+    "leeds united": "leeds",
+    "tottenham hotspur": "tottenham",
+}
+
+
+def normalize_club_name(name):
+    """Return a deterministic comparison key; deliberately no fuzzy matching."""
+    key = re.sub(r"[^a-z0-9]+", " ", str(name).lower()).strip()
+    return CLUB_ALIASES.get(key, key)
+
+
+def resolve_fallback_teams(directory, expected=CLUBS):
+    """Resolve exactly the static league membership against the English directory."""
+    by_name = {}
+    for team in directory:
+        key = normalize_club_name(team.get("name"))
+        by_name.setdefault(key, []).append(team)
+    resolved, unmatched, used_ids = [], [], set()
+    for club in expected:
+        matches = by_name.get(normalize_club_name(club), [])
+        if len(matches) != 1:
+            unmatched.append(club)
+            continue
+        team_id = matches[0].get("team_id")
+        if not isinstance(team_id, int) or team_id in used_ids:
+            raise RealWorldDataError(
+                f"Premier League club resolution returned a duplicate API team ID for {club}."
+            )
+        used_ids.add(team_id)
+        resolved.append({"team_id": team_id, "name": club})
+    if unmatched:
+        raise RealWorldDataError(
+            "Could not match these Premier League clubs in API-Football: "
+            + ", ".join(unmatched)
+        )
+    if len(resolved) != 20 or len(used_ids) != 20:
+        raise RealWorldDataError("Premier League club resolution did not produce exactly 20 unique clubs.")
+    return resolved
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
@@ -327,10 +401,29 @@ def _cached_player_statistics(api_key):
 
 
 def get_premier_league_teams():
-    """Return the current Premier League clubs (normally cached for 24 hours)."""
+    """Return season clubs; callers needing fallback should use data source resolver."""
     api_key = _api_key()
     _cached_season_diagnostic(api_key)
     return _cached_teams(api_key)
+
+
+def has_current_season_access():
+    """Return False only for a genuine season/subscription restriction."""
+    try:
+        _cached_season_diagnostic(_api_key())
+        return True
+    except CurrentSeasonUnavailable:
+        return False
+
+
+def get_real_data_source():
+    """Select full season data or the validated seasonless club directory."""
+    api_key = _api_key()
+    try:
+        _cached_season_diagnostic(api_key)
+    except CurrentSeasonUnavailable:
+        return "seasonless", resolve_fallback_teams(_cached_english_teams(api_key))
+    return "full", _cached_teams(api_key)
 
 
 def verify_current_season_available():
@@ -338,10 +431,10 @@ def verify_current_season_available():
     return _cached_season_diagnostic(_api_key())
 
 
-def get_current_squad(team_id, club=None):
+def get_current_squad(team_id, club=None, paced=False):
     """Return one club's current registered squad."""
     club = club or f"Team {team_id}"
-    return _cached_squad(int(team_id), club, _api_key())
+    return _cached_squad(int(team_id), club, _api_key(), bool(paced))
 
 
 def get_all_premier_league_squads():
