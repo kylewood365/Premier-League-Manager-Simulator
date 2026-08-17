@@ -5,6 +5,8 @@ logic separate makes navigation reruns safe and keeps simulation code in its
 existing modules.
 """
 
+from html import escape
+
 from contracts import calculate_wage_spend
 from fitness import is_available
 from league import get_sorted_league_table
@@ -139,6 +141,10 @@ def render_dashboard(st, state, wage_budget, format_money):
     club_row = next(row for row in rows if row["Club"] == club)
     finances = financial_summary(squad, state["transfer_budget"], wage_budget)
     st.header(f"{club} Manager Dashboard")
+    st.markdown(
+        f'<div class="eyebrow">Club HQ &nbsp; / &nbsp; Season {season} &nbsp; / &nbsp; '
+        f'Gameweek {gameweek}</div>', unsafe_allow_html=True,
+    )
     cols = st.columns(4)
     for column, label, value in zip(cols, ("Career Season", "Gameweek", "League Position", "Points"),
                                     (season, gameweek, ordinal(club_row["Position"]), club_row["Points"])):
@@ -151,12 +157,17 @@ def render_dashboard(st, state, wage_budget, format_money):
     fixture = next_fixture(state["fixtures"], gameweek, club, table)
     st.subheader("Next Match")
     if fixture:
-        st.caption(f'Gameweek {fixture["gameweek"]}')
-        st.markdown(f'### {fixture["home"]}  vs  {fixture["away"]}')
         detail = fixture["venue"]
         if fixture["opponent_position"]:
             detail += f' · {fixture["opponent"]} league position: {ordinal(fixture["opponent_position"])}'
-        st.info(detail)
+        st.markdown(
+            '<div class="match-card">'
+            '<div class="eyebrow">Next Match</div>'
+            f'<div class="match-teams"><span>{escape(fixture["home"])}</span>'
+            f'<span class="versus">VS</span><span>{escape(fixture["away"])}</span></div>'
+            f'<div class="match-meta">Gameweek {fixture["gameweek"]} &nbsp; • &nbsp; '
+            f'{escape(detail)}</div></div>', unsafe_allow_html=True,
+        )
     else:
         st.info("No remaining league fixture this season.")
 
@@ -166,6 +177,15 @@ def render_dashboard(st, state, wage_budget, format_money):
         results = recent_results(state.get("match_history", []), season, club)
         if not results:
             st.caption("No league matches completed this season.")
+        else:
+            badges = "".join(
+                f'<span class="form-badge form-{row["result"]}" title="Gameweek '
+                f'{row["gameweek"]}: {escape(row["home_team"])} '
+                f'{row["home_score"]}-{row["away_score"]} '
+                f'{escape(row["away_team"])}">{row["result"]}</span>'
+                for row in reversed(results)
+            )
+            st.markdown(f'<div class="form-row">{badges}</div>', unsafe_allow_html=True)
         for result in results:
             st.write(f'**{result["result"]}**  {result["home_team"]} {result["home_score"]}-{result["away_score"]} {result["away_team"]}')
     with right:
