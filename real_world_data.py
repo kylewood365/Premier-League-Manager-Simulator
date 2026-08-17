@@ -19,6 +19,65 @@ class RealWorldDataError(Exception):
     """A friendly, recoverable problem while loading real-world data."""
 
 
+def format_api_errors(errors, secrets=()):
+    """Flatten API-Football's error shapes without exposing credentials.
+
+    Only scalar error text is included: response bodies, headers, and other
+    request metadata are deliberately never interpolated into diagnostics.
+    """
+    secret_values = {str(value) for value in secrets if value}
+
+    def safe_text(value):
+        text = str(value).strip()
+        for secret in secret_values:
+            text = text.replace(secret, "[redacted]")
+        return " ".join(text.split())
+
+    def flatten(value, prefix=""):
+        if isinstance(value, dict):
+            parts = []
+            for key, nested in value.items():
+                label = safe_text(key)
+                path = f"{prefix}.{label}" if prefix else label
+                parts.extend(flatten(nested, path))
+            return parts
+        if isinstance(value, (list, tuple)):
+            parts = []
+            for nested in value:
+                parts.extend(flatten(nested, prefix))
+            return parts
+        if value is None or isinstance(value, (bool, int, float)):
+            return []
+        message = safe_text(value)
+        sensitive_label = prefix.rsplit(".", 1)[-1].lower()
+        if any(word in sensitive_label for word in ("key", "token", "secret")):
+            # Preserve explanatory messages (for example "Missing application
+            # key") but never render a credential-shaped value.
+            if len(message) >= 8 and not any(char.isspace() for char in message):
+                message = "[redacted]"
+        return [f"{prefix}: {message}" if prefix else message] if message else []
+
+    return "; ".join(flatten(errors))[:500]
+
+
+def _friendly_api_error(errors, api_key):
+    """Categorise a safe API error for display in the career setup UI."""
+    detail = format_api_errors(errors, secrets=(api_key,))
+    lowered = detail.lower()
+    if any(word in lowered for word in ("plan", "subscription")) or (
+        "season" in lowered
+        and any(word in lowered for word in ("available", "access", "allow"))
+    ):
+        return "API-Football does not allow this season on the current subscription."
+    if any(word in lowered for word in (
+        "api key", "application key", "authentication", "unauthorized"
+    )):
+        return "API-Football rejected the configured API key."
+    if any(word in lowered for word in ("quota", "request limit", "too many requests")):
+        return "API-Football's request quota has been reached."
+    return f"API-Football error: {detail or 'The service rejected the request.'}"
+
+
 def _api_key():
     """Read the key at call time so importing the app never requires a secret."""
     try:
@@ -63,9 +122,7 @@ def _request(path, params, api_key):
 
     errors = payload.get("errors") if isinstance(payload, dict) else None
     if errors:
-        raise RealWorldDataError(
-            "API-Football could not complete the request. Please try again later."
-        )
+        raise RealWorldDataError(_friendly_api_error(errors, api_key))
     rows = payload.get("response") if isinstance(payload, dict) else None
     if not isinstance(rows, list) or not rows:
         raise RealWorldDataError("API-Football returned no data for this request.")
@@ -91,7 +148,9 @@ def _request_page(path, params, api_key):
         raise RealWorldDataError(
             "API-Football player statistics are temporarily unavailable."
         ) from exc
-    if not isinstance(payload, dict) or payload.get("errors"):
+    if isinstance(payload, dict) and payload.get("errors"):
+        raise RealWorldDataError(_friendly_api_error(payload["errors"], api_key))
+    if not isinstance(payload, dict):
         raise RealWorldDataError("API-Football returned malformed player statistics.")
     rows = payload.get("response")
     paging = payload.get("paging", payload.get("pagination", {}))
@@ -221,6 +280,23 @@ def _cached_teams(api_key):
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+def _cached_season_diagnostic(api_key):
+    """Verify that this account can access the configured league season."""
+    rows = _request(
+        "/leagues", {"id": PREMIER_LEAGUE_ID, "season": CURRENT_SEASON}, api_key
+    )
+    if not any(
+        isinstance(row, dict)
+        and row.get("league", {}).get("id") == PREMIER_LEAGUE_ID
+        for row in rows
+    ):
+        raise RealWorldDataError(
+            f"API-Football season {CURRENT_SEASON} is unavailable to the configured account."
+        )
+    return True
+
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
 def _cached_squad(team_id, club, api_key):
     rows = _request("/players/squads", {"team": team_id}, api_key)
     players = parse_squad(rows, team_id, club)
@@ -252,7 +328,14 @@ def _cached_player_statistics(api_key):
 
 def get_premier_league_teams():
     """Return the current Premier League clubs (normally cached for 24 hours)."""
-    return _cached_teams(_api_key())
+    api_key = _api_key()
+    _cached_season_diagnostic(api_key)
+    return _cached_teams(api_key)
+
+
+def verify_current_season_available():
+    """Run the cached Premier League season/account access diagnostic."""
+    return _cached_season_diagnostic(_api_key())
 
 
 def get_current_squad(team_id, club=None):

@@ -471,7 +471,10 @@ if "active_club" not in st.session_state and st.button("Start Career"):
             st.success(f"Welcome to {selected_club}! Your career starts at Gameweek 1.")
         except RealWorldDataError as exc:
             st.error(f"The Real Squads career could not be prepared: {exc}")
-            st.info("No career was created. Retry, or choose Fictional Squads.")
+            st.info(
+                "No career was created. Retry, or choose Fictional Squads to play "
+                "without the API."
+            )
     else:
         st.warning("Please choose a club before starting your career.")
 
