@@ -159,6 +159,13 @@ def accept_transfer_request(player):
     return True
 
 
+def set_transfer_listed(player, listed=True):
+    """Let the manager list or unlist any player manually."""
+    ensure_squad_management(player)
+    player["transfer_listed"] = bool(listed)
+    return player["transfer_listed"]
+
+
 def reset_squad_management_for_new_season(squad):
     """Clear season playing-time totals while preserving roles and requests."""
     for player in squad:

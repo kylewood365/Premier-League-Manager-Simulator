@@ -17,8 +17,12 @@ from stats import create_player_statistics, get_current_squad_statistics
 from squad_management import (
     SQUAD_ROLES, accept_transfer_request, assign_default_roles, change_squad_role,
     ensure_squad_management, promise_more_playing_time, satisfaction_label,
+    set_transfer_listed,
 )
 from transfer import buy_player, format_money, sell_player, sign_free_agent
+from transfer_offers import (
+    accept_offer, counter_offer, generate_ai_offers, reject_offer,
+)
 from tactics import (
     FORMATIONS, TACTICAL_STYLES, apply_substitutions,
     validate_bench, validate_starting_xi,
@@ -74,12 +78,17 @@ def render_transfer_market(active_club, career_squads, squad):
                 player_to_buy,
                 st.session_state["transfer_budget"],
                 CLUB_WAGE_BUDGETS[active_club],
+                st.session_state["transfer_history"],
+                st.session_state["season_number"],
+                st.session_state["club_transfer_budgets"],
             )
             if success:
                 st.session_state["transfer_budget"] = new_budget
+                st.session_state["club_transfer_budgets"][active_club] = new_budget
                 st.success(message)
             else:
                 st.warning(message)
+
 
     st.header("Contract Management")
     contract_name = st.selectbox(
@@ -122,6 +131,7 @@ def render_transfer_market(active_club, career_squads, squad):
         success, message = sign_free_agent(
             career_squads, active_club, free_agents, free_name,
             free_contract, CLUB_WAGE_BUDGETS[active_club],
+            st.session_state["transfer_history"], st.session_state["season_number"],
         )
         (st.success if success else st.warning)(message)
 
@@ -151,9 +161,80 @@ def render_transfer_market(active_club, career_squads, squad):
             )
             if success:
                 st.session_state["transfer_budget"] = new_budget
+                st.session_state["club_transfer_budgets"][active_club] = new_budget
                 st.success(message)
             else:
                 st.warning(message)
+
+def render_transfer_offers(active_club, career_squads):
+    """Show active negotiations and completed transfer history."""
+    st.header("Transfer Offers")
+    offers = st.session_state["transfer_offers"]
+    squad = career_squads[active_club]
+    rows = []
+    for offer in offers:
+        player = next((p for p in squad if p["name"] == offer["player"]), None)
+        rows.append({
+            "Player": offer["player"], "Buying Club": offer["buying_club"],
+            "Overall": player["overall"] if player else "—",
+            "Age": player["age"] if player else "—",
+            "Market Value": format_money(player["value"]) if player else "—",
+            "Offer": format_money(offer["offered_fee"]), "Status": offer["status"],
+        })
+    if rows:
+        st.dataframe(rows, hide_index=True, use_container_width=True)
+    else:
+        st.write("No transfer offers have been received yet.")
+
+    for offer in offers:
+        if offer["status"] not in {"Pending", "Countered"}:
+            continue
+        player = next((p for p in squad if p["name"] == offer["player"]), None)
+        if player is None:
+            continue
+        st.write(f"**{offer['buying_club']}** offer {format_money(offer['offered_fee'])} for **{offer['player']}**")
+        accept_col, reject_col = st.columns(2)
+        if accept_col.button("Accept", key=f"accept_offer_{offer['id']}"):
+            success, message = accept_offer(
+                offer, career_squads, active_club,
+                st.session_state["club_transfer_budgets"],
+                st.session_state["transfer_history"], st.session_state["season_number"],
+            )
+            st.session_state["transfer_budget"] = st.session_state["club_transfer_budgets"][active_club]
+            (st.success if success else st.warning)(f"Transfer Completed\n\n{message}")
+            st.rerun()
+        if reject_col.button("Reject", key=f"reject_offer_{offer['id']}"):
+            reject_offer(offer)
+            st.info("Transfer offer rejected.")
+            st.rerun()
+        asking_price = st.number_input(
+            "Counter Offer", min_value=100_000, step=100_000,
+            value=max(offer["offered_fee"] + 100_000, player["value"]),
+            key=f"counter_value_{offer['id']}",
+        )
+        if st.button("Submit Counter Offer", key=f"counter_offer_{offer['id']}"):
+            response = counter_offer(
+                offer, asking_price, player,
+                st.session_state["club_transfer_budgets"],
+            )
+            if response == "Accepted":
+                st.success(f"Counter Accepted\n\n{offer['buying_club']} accepted your {format_money(asking_price)} asking price.")
+            elif response == "Improved":
+                st.info(f"Improved Offer: {format_money(offer['offered_fee'])}.")
+            else:
+                st.warning("The buying club withdrew from negotiations.")
+            st.rerun()
+
+    st.subheader("Transfer History")
+    history = st.session_state["transfer_history"]
+    if history:
+        st.dataframe([{
+            "Season": row["season"], "Player": row["player"],
+            "From": row["from_club"], "To": row["to_club"],
+            "Fee": format_money(row["fee"]), "Type": row["type"],
+        } for row in history], hide_index=True, use_container_width=True)
+    else:
+        st.write("No completed transfers in this career.")
 
 
 st.set_page_config(page_title="Premier League Manager Simulator", page_icon="⚽")
@@ -175,6 +256,10 @@ if st.button("Start Career"):
         st.session_state["career_squads"] = deepcopy(SQUADS)
         assign_default_roles(st.session_state["career_squads"][selected_club])
         st.session_state["transfer_budget"] = CLUB_BUDGETS[selected_club]
+        st.session_state["club_transfer_budgets"] = dict(CLUB_BUDGETS)
+        st.session_state["transfer_offers"] = []
+        st.session_state["processed_offer_gameweeks"] = set()
+        st.session_state["transfer_history"] = []
         st.session_state["transfer_pool"] = []
         st.session_state["free_agents"] = []
         st.session_state["player_statistics"] = create_player_statistics(
@@ -312,6 +397,10 @@ if "active_club" in st.session_state:
             if col2.button("Accept Transfer Request"):
                 accept_transfer_request(managed_player)
                 st.success("Player marked as transfer listed and remains selectable.")
+        list_label = "Remove from Transfer List" if managed_player["transfer_listed"] else "Add to Transfer List"
+        if st.button(list_label):
+            set_transfer_listed(managed_player, not managed_player["transfer_listed"])
+            st.success("Transfer-list status updated.")
 
     st.subheader("Player Stats")
     stat_sort = st.selectbox(
@@ -439,9 +528,23 @@ if "active_club" in st.session_state:
 
     if not is_complete:
         render_transfer_market(active_club, career_squads, squad)
+        render_transfer_offers(active_club, career_squads)
 
     if is_complete:
+        new_offers = generate_ai_offers(
+            career_squads, active_club,
+            st.session_state["club_transfer_budgets"],
+            st.session_state["transfer_offers"], gameweek,
+            st.session_state["season_number"],
+            st.session_state["processed_offer_gameweeks"],
+        )
+        for offer in new_offers:
+            st.info(
+                f"Transfer Offer\n\n{offer['buying_club']} have offered "
+                f"{format_money(offer['offered_fee'])} for {offer['player']}."
+            )
         render_transfer_market(active_club, career_squads, squad)
+        render_transfer_offers(active_club, career_squads)
         st.subheader(f"Gameweek {gameweek} Results")
         for result in st.session_state["gameweek_results"]:
             scoreline = (
