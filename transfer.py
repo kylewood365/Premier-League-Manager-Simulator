@@ -15,13 +15,17 @@ def find_player(squads, player_name):
     return None, None
 
 
-def buy_player(squads, user_club, player_name, budget):
+def buy_player(squads, user_club, player_name, budget, wage_budget=None):
     """Buy an available player and return the updated budget and message."""
     selling_club, player = find_player(squads, player_name)
     if player is None or selling_club == user_club:
         return False, budget, "That player is no longer available to buy."
     if budget < player["value"]:
         return False, budget, "You do not have enough transfer budget for this player."
+    if wage_budget is not None:
+        from contracts import calculate_wage_spend
+        if calculate_wage_spend(squads[user_club]) + player["wage"] > wage_budget:
+            return False, budget, "This transfer would exceed your weekly wage budget."
 
     squads[selling_club].remove(player)
     squads[user_club].append(player)
@@ -42,3 +46,20 @@ def sell_player(squads, user_club, player_name, budget, transfer_pool):
     squads[user_club].remove(player)
     transfer_pool.append(player)
     return True, budget + player["value"], f"Sold {player_name}!"
+
+
+def sign_free_agent(squads, user_club, free_agents, player_name, contract_years, wage_budget):
+    """Sign an unattached player without a transfer fee."""
+    from contracts import calculate_wage_spend
+    player = next((item for item in free_agents if item["name"] == player_name), None)
+    if player is None:
+        return False, "That free agent is no longer available."
+    if contract_years not in range(1, 6):
+        return False, "Choose a contract between 1 and 5 years."
+    if calculate_wage_spend(squads[user_club]) + player["wage"] > wage_budget:
+        return False, "This signing would exceed your weekly wage budget."
+    free_agents.remove(player)
+    player["contract_years"] = contract_years
+    player.pop("club", None)
+    squads[user_club].append(player)
+    return True, f"Signed {player_name} on a free transfer!"

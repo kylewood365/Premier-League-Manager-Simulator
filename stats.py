@@ -74,6 +74,8 @@ def get_current_squad_statistics(squad, statistics, sort_by="Goals"):
             "Age": player["age"],
             "Overall": player["overall"],
             "Potential": player["potential"],
+            "Wage": f"£{player['wage']:,}/week",
+            "Contract": f"{player['contract_years']} year(s)",
             "Appearances": statistics[player["name"]]["appearances"],
             "Goals": statistics[player["name"]]["goals"],
         }

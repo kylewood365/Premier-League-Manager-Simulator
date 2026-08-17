@@ -4,13 +4,14 @@ import random
 import streamlit as st
 
 from career import record_season_history, start_next_season
-from data import CLUBS, CLUB_BUDGETS, SQUADS, calculate_team_strength
+from contracts import calculate_wage_spend, renew_contract, requested_weekly_wage
+from data import CLUBS, CLUB_BUDGETS, CLUB_WAGE_BUDGETS, SQUADS, calculate_team_strength
 from fixtures import advance_gameweek, generate_fixtures, get_club_fixture
 from game import simulate_gameweek
 from league import create_league_table, get_sorted_league_table
 from progression import process_end_of_season
 from stats import create_player_statistics, get_current_squad_statistics
-from transfer import buy_player, format_money, sell_player
+from transfer import buy_player, format_money, sell_player, sign_free_agent
 
 
 def render_transfer_market(active_club, career_squads, squad):
@@ -60,12 +61,56 @@ def render_transfer_market(active_club, career_squads, squad):
                 active_club,
                 player_to_buy,
                 st.session_state["transfer_budget"],
+                CLUB_WAGE_BUDGETS[active_club],
             )
             if success:
                 st.session_state["transfer_budget"] = new_budget
                 st.success(message)
             else:
                 st.warning(message)
+
+    st.header("Contract Management")
+    contract_name = st.selectbox(
+        "Player contract", [player["name"] for player in squad], index=None
+    )
+    contract_player = next(
+        (player for player in squad if player["name"] == contract_name), None
+    )
+    extension = st.selectbox("Contract extension", [1, 2, 3, 4])
+    if contract_player:
+        st.write(
+            f"Current: **{contract_player['contract_years']} year(s)** at "
+            f"**{format_money(contract_player['wage'])}/week**. Requested wage: "
+            f"**{format_money(requested_weekly_wage(contract_player))}/week**."
+        )
+    if st.button("Renew Contract", disabled=contract_player is None):
+        success, message = renew_contract(
+            contract_player, extension, squad, CLUB_WAGE_BUDGETS[active_club]
+        )
+        (st.success if success else st.warning)(message)
+
+    st.header("Free Agents")
+    free_agents = st.session_state["free_agents"]
+    st.dataframe(
+        [{
+            "Player": player["name"], "Position": player["position"],
+            "Age": player["age"], "Overall": player["overall"],
+            "Potential": player["potential"],
+            "Wage Expectation": f"{format_money(player['wage'])}/week",
+            "Value": format_money(player["value"]),
+        } for player in free_agents],
+        hide_index=True, use_container_width=True,
+    )
+    free_name = st.selectbox(
+        "Free agent to sign", [player["name"] for player in free_agents], index=None
+    )
+    free_contract = st.selectbox("New contract length", [1, 2, 3, 4, 5])
+    if st.button("Sign Free Agent", disabled=free_name is None):
+        success, message = sign_free_agent(
+            career_squads, active_club, free_agents, free_name,
+            free_contract, CLUB_WAGE_BUDGETS[active_club],
+        )
+        (st.success if success else st.warning)(message)
 
     with sell_tab:
         player_to_sell = st.selectbox(
@@ -113,6 +158,7 @@ if st.button("Start Career"):
         st.session_state["career_squads"] = deepcopy(SQUADS)
         st.session_state["transfer_budget"] = CLUB_BUDGETS[selected_club]
         st.session_state["transfer_pool"] = []
+        st.session_state["free_agents"] = []
         st.session_state["player_statistics"] = create_player_statistics(
             st.session_state["career_squads"][selected_club]
         )
@@ -137,6 +183,12 @@ if "active_club" in st.session_state:
 
     st.header(f"Season {st.session_state['season_number']}")
     st.metric("Transfer Budget", format_money(st.session_state["transfer_budget"]))
+    wage_spend = calculate_wage_spend(squad)
+    wage_budget = CLUB_WAGE_BUDGETS[active_club]
+    wage_columns = st.columns(3)
+    wage_columns[0].metric("Wage Budget", f"{format_money(wage_budget)}/week")
+    wage_columns[1].metric("Current Wage Spend", f"{format_money(wage_spend)}/week")
+    wage_columns[2].metric("Remaining Wage Budget", f"{format_money(wage_budget - wage_spend)}/week")
 
     st.subheader("Career History")
     history = st.session_state.setdefault("career_history", [])
@@ -189,6 +241,8 @@ if "active_club" in st.session_state:
             "Age": player["age"],
             "Overall": player["overall"],
             "Potential": player["potential"],
+            "Wage": f"{format_money(player['wage'])}/week",
+            "Contract": f"{player['contract_years']} year(s)",
         }
         for player in squad
     ]
@@ -301,6 +355,7 @@ if "active_club" in st.session_state:
                     st.session_state["processed_seasons"],
                     st.session_state["season_number"],
                     retirement_history=st.session_state["retirement_history"],
+                    free_agents=st.session_state["free_agents"],
                 )
                 if summary is not None:
                     st.session_state["season_summary"] = summary
@@ -359,6 +414,21 @@ if "active_club" in st.session_state:
                         f"Position: {youth['position']}  \n"
                         f"Overall: {youth['overall']}  \n"
                         f"Potential: {youth['potential']}"
+                    )
+
+            user_contract_events = [
+                event for event in summary["contract_events"]
+                if event["club"] == active_club
+            ]
+            for event in user_contract_events:
+                if event["type"] == "warning":
+                    st.warning(
+                        f"Contract Warning: {event['player']} has 1 year remaining."
+                    )
+                else:
+                    st.error(
+                        f"Contract Expired: {event['player']} has left "
+                        f"{active_club} on a free transfer."
                     )
 
             if st.button("Start Next Season"):
