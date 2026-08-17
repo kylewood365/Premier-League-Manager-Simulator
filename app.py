@@ -6,6 +6,7 @@ from data import CLUBS, CLUB_BUDGETS, SQUADS, calculate_team_strength
 from fixtures import advance_gameweek, generate_fixtures, get_club_fixture
 from game import simulate_gameweek
 from league import create_league_table, get_sorted_league_table
+from stats import create_player_statistics, get_current_squad_statistics
 from transfer import buy_player, format_money, sell_player
 
 
@@ -109,6 +110,10 @@ if st.button("Start Career"):
         st.session_state["career_squads"] = deepcopy(SQUADS)
         st.session_state["transfer_budget"] = CLUB_BUDGETS[selected_club]
         st.session_state["transfer_pool"] = []
+        st.session_state["player_statistics"] = create_player_statistics(
+            st.session_state["career_squads"][selected_club]
+        )
+        st.session_state["recorded_stat_gameweeks"] = set()
         st.session_state.pop("gameweek_results", None)
         st.success(f"Welcome to {selected_club}! Your career starts at Gameweek 1.")
     else:
@@ -145,6 +150,21 @@ if "active_club" in st.session_state:
     ]
     st.dataframe(squad_table, hide_index=True, use_container_width=True)
 
+    st.subheader("Player Stats")
+    stat_sort = st.selectbox(
+        "Sort player stats by", ["Goals", "Appearances", "Overall", "Player"]
+    )
+    stat_rows = get_current_squad_statistics(
+        squad, st.session_state["player_statistics"], stat_sort
+    )
+    top_goals = stat_rows[0]["Goals"] if stat_rows and stat_sort == "Goals" else max(
+        (row["Goals"] for row in stat_rows), default=0
+    )
+    top_scorers = [row["Player"] for row in stat_rows if row["Goals"] == top_goals]
+    top_scorer_name = ", ".join(top_scorers) if top_goals else "No goals yet"
+    st.metric("Top Scorer", top_scorer_name, f"{top_goals} goals")
+    st.dataframe(stat_rows, hide_index=True, use_container_width=True)
+
     if not is_complete:
         st.subheader("Choose Your Starting XI")
         selected_names = st.multiselect(
@@ -174,6 +194,10 @@ if "active_club" in st.session_state:
                     selected_xi,
                     st.session_state["league_table"],
                     st.session_state["completed_gameweeks"],
+                    player_statistics=st.session_state["player_statistics"],
+                    recorded_stat_gameweeks=st.session_state[
+                        "recorded_stat_gameweeks"
+                    ],
                 )
                 st.rerun()
 
@@ -190,6 +214,12 @@ if "active_club" in st.session_state:
             )
             if active_club in (result["home_club"], result["away_club"]):
                 st.success(f"⭐ **{scoreline}** — Your match")
+                st.write("**Goals:**")
+                if result["goal_events"]:
+                    for event in result["goal_events"]:
+                        st.write(f"{event['player']} {event['minute']}'")
+                else:
+                    st.write("None")
             else:
                 st.write(scoreline)
 
