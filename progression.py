@@ -4,6 +4,7 @@ import random
 
 from data import calculate_player_value
 from league import get_sorted_league_table
+from retirement import process_retirements
 
 ATTACKING_POSITIONS = {"ST", "LW", "RW", "CAM"}
 
@@ -64,7 +65,7 @@ def get_league_champion(league_table):
 
 def process_end_of_season(
     squads, user_club, player_statistics, league_table, processed_seasons,
-    season=1, rng=None
+    season=1, rng=None, retirement_history=None
 ):
     """Progress the user's squad and age the whole league exactly once per season."""
     if season in processed_seasons:
@@ -91,6 +92,13 @@ def process_end_of_season(
             player["age"] += 1
             player["value"] = calculate_player_value(player["overall"], player["age"])
 
+    # Retirement follows development and aging. A replacement is inserted into
+    # the same list immediately, so no club ever loses the ability to field an XI.
+    retirement_history = retirement_history if retirement_history is not None else []
+    retirements = process_retirements(
+        squads, season, retirement_history, processed_seasons, rng
+    )
+
     sorted_table = get_sorted_league_table(league_table)
     user_position = next(
         index for index, row in enumerate(sorted_table, 1) if row["Club"] == user_club
@@ -104,6 +112,6 @@ def process_end_of_season(
         "top_scorer": top_scorer,
         "top_scorer_goals": top_stats["goals"],
         "development": summary,
+        "retirements": retirements,
     }
-    processed_seasons.add(season)
     return result

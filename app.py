@@ -120,6 +120,7 @@ if st.button("Start Career"):
         st.session_state["processed_seasons"] = set()
         st.session_state["season_number"] = 1
         st.session_state["career_history"] = []
+        st.session_state["retirement_history"] = []
         st.session_state.pop("season_summary", None)
         st.session_state.pop("gameweek_results", None)
         st.success(f"Welcome to {selected_club}! Your career starts at Gameweek 1.")
@@ -156,6 +157,20 @@ if "active_club" in st.session_state:
             )
     else:
         st.write("Complete a season to add it to your history.")
+
+    st.subheader("Retirement History")
+    retirement_history = st.session_state.setdefault("retirement_history", [])
+    if retirement_history:
+        st.dataframe(
+            [{
+                "Player": row["player"], "Club": row["club"],
+                "Age": row["retirement_age"], "Season": row["season"],
+            } for row in retirement_history],
+            hide_index=True,
+            use_container_width=True,
+        )
+    else:
+        st.write("No players have retired during this career yet.")
 
     st.header(f"Gameweek {gameweek}")
     if fixture:
@@ -285,6 +300,7 @@ if "active_club" in st.session_state:
                     st.session_state["league_table"],
                     st.session_state["processed_seasons"],
                     st.session_state["season_number"],
+                    retirement_history=st.session_state["retirement_history"],
                 )
                 if summary is not None:
                     st.session_state["season_summary"] = summary
@@ -324,6 +340,26 @@ if "active_club" in st.session_state:
                 )
             else:
                 st.write("No Overall changes this season.")
+
+            user_retirements = [
+                event for event in summary["retirements"]
+                if event["club"] == active_club
+            ]
+            if user_retirements:
+                st.subheader("PLAYER RETIREMENT")
+                for event in user_retirements:
+                    youth = event["youth"]
+                    st.warning(
+                        f"{event['player']} has retired at age "
+                        f"{event['retirement_age']}."
+                    )
+                    st.success("Youth Academy Promotion")
+                    st.markdown(
+                        f"**{youth['name']}**  \nAge: {youth['age']}  \n"
+                        f"Position: {youth['position']}  \n"
+                        f"Overall: {youth['overall']}  \n"
+                        f"Potential: {youth['potential']}"
+                    )
 
             if st.button("Start Next Season"):
                 start_next_season(st.session_state, CLUBS)
