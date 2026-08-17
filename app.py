@@ -11,6 +11,10 @@ from fixtures import advance_gameweek, generate_fixtures, get_club_fixture
 from fitness import is_available
 from game import simulate_gameweek, simulate_half
 from league import create_league_table, get_sorted_league_table
+from match_stats import (
+    calculate_season_aggregates, create_history_record, generate_half_statistics,
+    record_match_history,
+)
 from morale import ensure_player_morale_form, form_label, form_score, morale_label
 from progression import process_end_of_season
 from scouting import (
@@ -347,6 +351,7 @@ if st.button("Start Career"):
         st.session_state["processed_seasons"] = set()
         st.session_state["season_number"] = 1
         st.session_state["career_history"] = []
+        st.session_state["match_history"] = []
         st.session_state["retirement_history"] = []
         st.session_state["scouting_knowledge"] = initialise_scouting(
             st.session_state["career_squads"], selected_club
@@ -501,6 +506,28 @@ if "active_club" in st.session_state:
     st.metric("Top Scorer", top_scorer_name, f"{top_goals} goals")
     st.dataframe(stat_rows, hide_index=True, use_container_width=True)
 
+    st.subheader("Team Statistics")
+    team_stats = calculate_season_aggregates(
+        st.session_state.setdefault("match_history", []),
+        st.session_state["season_number"],
+    )
+    stat_columns = st.columns(3)
+    stat_columns[0].metric("Average Possession", f"{team_stats['average_possession']:.1f}%")
+    stat_columns[1].metric("Total Shots", team_stats["total_shots"])
+    stat_columns[2].metric("Shots on Target", team_stats["total_shots_on_target"])
+    stat_columns = st.columns(3)
+    stat_columns[0].metric("Total xG", f"{team_stats['total_xg']:.2f}")
+    stat_columns[1].metric("Average xG", f"{team_stats['average_xg']:.2f}")
+    stat_columns[2].metric("Total Goals", team_stats["total_goals"])
+
+    with st.expander("Match History"):
+        current_history = [row for row in st.session_state["match_history"]
+                           if row["season"] == st.session_state["season_number"]]
+        if current_history:
+            st.dataframe(current_history, hide_index=True, use_container_width=True)
+        else:
+            st.write("No league matches completed this season.")
+
     if not is_complete:
         phase = st.session_state.setdefault("match_phase", "Kickoff")
         st.subheader(f"Match Flow: {phase}")
@@ -546,8 +573,16 @@ if "active_club" in st.session_state:
                 )
                 if venue == "Home":
                     first_half = simulate_half(strength, opponent_strength, style, "Balanced")
+                    first_half["stats"] = generate_half_statistics(
+                        strength, opponent_strength, first_half["home_score"],
+                        first_half["away_score"], style, "Balanced"
+                    )
                 else:
                     first_half = simulate_half(opponent_strength, strength, "Balanced", style)
+                    first_half["stats"] = generate_half_statistics(
+                        opponent_strength, strength, first_half["home_score"],
+                        first_half["away_score"], "Balanced", style
+                    )
                 st.session_state["first_half_result"] = first_half
                 st.session_state["kickoff_style"] = style
                 st.session_state["match_phase"] = "Half-time"
@@ -556,6 +591,13 @@ if "active_club" in st.session_state:
         if phase in {"Half-time", "Second half"}:
             first = st.session_state["first_half_result"]
             st.info(f"Half-time: **{fixture['home']} {first['home_score']} - {first['away_score']} {fixture['away']}**")
+            half_stats = first["stats"]
+            st.markdown(
+                f"**Possession:** {half_stats['home']['possession']}% – {half_stats['away']['possession']}%  \n"
+                f"**Shots:** {half_stats['home']['shots']} – {half_stats['away']['shots']}  \n"
+                f"**Shots on Target:** {half_stats['home']['shots_on_target']} – {half_stats['away']['shots_on_target']}  \n"
+                f"**xG:** {half_stats['home']['xg']:.2f} – {half_stats['away']['xg']:.2f}"
+            )
             second_style = st.selectbox(
                 "Tactic for the second half", TACTICAL_STYLES,
                 index=TACTICAL_STYLES.index(style), key=f"second_style_{gameweek}",
@@ -605,6 +647,13 @@ if "active_club" in st.session_state:
                     first_half_result=st.session_state["first_half_result"],
                 )
                 st.session_state["match_phase"] = "Full-time"
+                user_match = next(result for result in st.session_state["gameweek_results"]
+                                  if active_club in (result["home_club"], result["away_club"]))
+                record_match_history(
+                    st.session_state.setdefault("match_history", []),
+                    create_history_record(st.session_state["season_number"], gameweek,
+                                          active_club, user_match),
+                )
                 st.rerun()
 
     if not is_complete:
@@ -649,6 +698,14 @@ if "active_club" in st.session_state:
             )
             if active_club in (result["home_club"], result["away_club"]):
                 st.success(f"⭐ **{scoreline}** — Your match")
+                stats = result["match_stats"]
+                st.markdown("### Match Stats")
+                st.dataframe([
+                    {"Statistic": "Possession", result["home_club"]: f"{stats['home']['possession']}%", result["away_club"]: f"{stats['away']['possession']}%"},
+                    {"Statistic": "Shots", result["home_club"]: stats["home"]["shots"], result["away_club"]: stats["away"]["shots"]},
+                    {"Statistic": "Shots on Target", result["home_club"]: stats["home"]["shots_on_target"], result["away_club"]: stats["away"]["shots_on_target"]},
+                    {"Statistic": "xG", result["home_club"]: f"{stats['home']['xg']:.2f}", result["away_club"]: f"{stats['away']['xg']:.2f}"},
+                ], hide_index=True, use_container_width=True)
                 st.write("**Match events:**")
                 match_events = [
                     {**event, "label": "Goal"} for event in result["goal_events"]

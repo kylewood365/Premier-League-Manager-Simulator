@@ -42,6 +42,9 @@ def start_next_season(state, clubs, rng=None):
     state["current_gameweek"] = 1
     state["completed_gameweeks"] = set()
     state["recorded_stat_gameweeks"] = set()
+    # Match history may be retained as a career archive; aggregates always
+    # filter it by season, so the new campaign begins at zero.
+    state.setdefault("match_history", [])
     state["processed_health_gameweeks"] = set()
     state["processed_discipline_gameweeks"] = set()
     state["processed_morale_gameweeks"] = set()

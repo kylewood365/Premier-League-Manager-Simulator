@@ -19,6 +19,24 @@ STYLE_MODIFIERS = {
     "Counter Attack": (1.2, -0.3),
 }
 
+# Match-stat effects are kept here so every simulation uses the same tactical
+# identity.  Values are deliberately modest: the effective player strength is
+# still the most important input.
+STAT_STYLE_MODIFIERS = {
+    "Balanced": {"possession": 0, "shots": 0.0, "quality": 0.0, "opponent": 0.0},
+    "Attacking": {"possession": 1, "shots": 1.8, "quality": 0.02, "opponent": 0.7},
+    "Defensive": {"possession": -2, "shots": -1.0, "quality": -0.01, "opponent": -1.2},
+    "Possession": {"possession": 8, "shots": 0.4, "quality": 0.0, "opponent": -0.3},
+    "Counter Attack": {"possession": -7, "shots": -0.5, "quality": 0.045, "opponent": 0.2},
+}
+
+
+def statistical_style(style):
+    """Return the match-stat modifiers for a supported tactical style."""
+    if style not in STAT_STYLE_MODIFIERS:
+        raise ValueError("Unknown tactical style.")
+    return STAT_STYLE_MODIFIERS[style]
+
 POSITION_GROUPS = {
     "GK": {"GK"},
     "CB": {"CB"},
