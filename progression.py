@@ -5,6 +5,7 @@ import random
 from data import calculate_player_value
 from league import get_sorted_league_table
 from retirement import process_retirements
+from contracts import age_free_agents, process_contracts
 
 ATTACKING_POSITIONS = {"ST", "LW", "RW", "CAM"}
 
@@ -65,7 +66,7 @@ def get_league_champion(league_table):
 
 def process_end_of_season(
     squads, user_club, player_statistics, league_table, processed_seasons,
-    season=1, rng=None, retirement_history=None
+    season=1, rng=None, retirement_history=None, free_agents=None
 ):
     """Progress the user's squad and age the whole league exactly once per season."""
     if season in processed_seasons:
@@ -95,9 +96,11 @@ def process_end_of_season(
     # Retirement follows development and aging. A replacement is inserted into
     # the same list immediately, so no club ever loses the ability to field an XI.
     retirement_history = retirement_history if retirement_history is not None else []
-    retirements = process_retirements(
-        squads, season, retirement_history, processed_seasons, rng
-    )
+    # Retirees leave football before expiring contracts are moved to free agency.
+    retirements = process_retirements(squads, season, retirement_history, None, rng)
+    free_agents = free_agents if free_agents is not None else []
+    age_free_agents(free_agents)
+    contract_events = process_contracts(squads, free_agents, season, processed_seasons)
 
     sorted_table = get_sorted_league_table(league_table)
     user_position = next(
@@ -113,5 +116,6 @@ def process_end_of_season(
         "top_scorer_goals": top_stats["goals"],
         "development": summary,
         "retirements": retirements,
+        "contract_events": contract_events,
     }
     return result

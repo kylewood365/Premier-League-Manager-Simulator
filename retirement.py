@@ -7,6 +7,7 @@ easy to test and lets ``app.py`` concentrate on presenting their results.
 import random
 
 from data import calculate_player_value
+from contracts import calculate_weekly_wage
 
 
 # Deliberately fictional combinations rather than names of current footballers.
@@ -57,6 +58,8 @@ def generate_youth_player(position, existing_names=(), rng=None):
         "overall": overall,
         "potential": potential,
         "value": calculate_player_value(overall, age),
+        "wage": max(2_000, min(8_000, calculate_weekly_wage(overall, age) // 3)),
+        "contract_years": rng.randint(2, 5),
     }
 
 

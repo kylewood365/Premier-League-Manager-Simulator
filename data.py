@@ -1,5 +1,7 @@
 """Football data used by the Premier League Manager Simulator."""
 
+from contracts import calculate_weekly_wage, starting_contract_years
+
 # Keeping the club list here gives the UI and squad data one shared source.
 CLUBS = [
     "Arsenal",
@@ -47,6 +49,12 @@ CLUB_BUDGETS = {
     "Tottenham Hotspur": 100_000_000,
     "West Ham United": 60_000_000,
     "Wolverhampton Wanderers": 40_000_000,
+}
+
+# Weekly budgets scale with each club's financial strength.
+CLUB_WAGE_BUDGETS = {
+    club: 900_000 + transfer_budget // 70
+    for club, transfer_budget in CLUB_BUDGETS.items()
 }
 
 # A balanced starting shape: one goalkeeper, four defenders, three midfielders,
@@ -116,36 +124,39 @@ def create_squad(surname, base_rating, rating_changes):
     """Build one easy-to-read fictional squad."""
     squad = []
     for index in range(11):
+        overall = base_rating + rating_changes[index]
+        potential = calculate_potential(overall, STARTER_AGES[index])
         squad.append(
             {
                 "name": f"{FIRST_NAMES[index]} {surname}",
                 "position": STARTER_POSITIONS[index],
                 "age": STARTER_AGES[index],
-                "overall": base_rating + rating_changes[index],
-                "potential": calculate_potential(
-                    base_rating + rating_changes[index], STARTER_AGES[index]
-                ),
+                "overall": overall,
+                "potential": potential,
                 "value": calculate_player_value(
                     base_rating + rating_changes[index], STARTER_AGES[index]
                 ),
+                "wage": calculate_weekly_wage(overall, STARTER_AGES[index], potential),
+                "contract_years": starting_contract_years(STARTER_AGES[index]),
             }
         )
 
     for index in range(len(SUBSTITUTE_FIRST_NAMES)):
+        overall = base_rating + SUBSTITUTE_RATING_CHANGES[index]
+        potential = calculate_potential(overall, SUBSTITUTE_AGES[index])
         squad.append(
             {
                 "name": f"{SUBSTITUTE_FIRST_NAMES[index]} {surname}",
                 "position": SUBSTITUTE_POSITIONS[index],
                 "age": SUBSTITUTE_AGES[index],
-                "overall": base_rating + SUBSTITUTE_RATING_CHANGES[index],
-                "potential": calculate_potential(
-                    base_rating + SUBSTITUTE_RATING_CHANGES[index],
-                    SUBSTITUTE_AGES[index],
-                ),
+                "overall": overall,
+                "potential": potential,
                 "value": calculate_player_value(
                     base_rating + SUBSTITUTE_RATING_CHANGES[index],
                     SUBSTITUTE_AGES[index],
                 ),
+                "wage": calculate_weekly_wage(overall, SUBSTITUTE_AGES[index], potential),
+                "contract_years": starting_contract_years(SUBSTITUTE_AGES[index]),
             }
         )
     return squad
