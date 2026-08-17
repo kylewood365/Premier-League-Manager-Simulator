@@ -339,7 +339,9 @@ CLUB_ALIASES = {
     "brighton": "brighton hove albion",
     "brighton and hove albion": "brighton hove albion",
     "coventry city": "coventry",
+    "ipswich town": "ipswich",
     "leeds united": "leeds",
+    "newcastle united": "newcastle",
     "tottenham hotspur": "tottenham",
 }
 

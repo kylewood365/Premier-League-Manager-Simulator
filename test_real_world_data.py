@@ -192,15 +192,37 @@ def test_non_subscription_failures_do_not_activate_fallback(message):
     english.assert_not_called()
 
 
-def test_fallback_aliases_and_duplicate_and_missing_validation():
+@pytest.mark.parametrize(("simulator_name", "api_name"), [
+    ("Ipswich Town", "Ipswich"),
+    ("Newcastle United", "Newcastle"),
+])
+def test_fallback_api_football_club_aliases(simulator_name, api_name):
+    assert real.normalize_club_name(simulator_name) == real.normalize_club_name(api_name)
+
+
+def mocked_english_team_directory():
     names = list(real.CLUBS)
     aliases = {"Brighton": "Brighton Hove Albion", "Leeds United": "Leeds",
+               "Ipswich Town": "Ipswich", "Newcastle United": "Newcastle",
                "Tottenham Hotspur": "Tottenham"}
-    directory = [{"team_id": index + 1, "name": aliases.get(name, name)}
-                 for index, name in enumerate(names)]
-    assert [team["name"] for team in real.resolve_fallback_teams(directory)] == names
+    return [{"team_id": index + 1, "name": aliases.get(name, name)}
+            for index, name in enumerate(names)]
+
+
+def test_all_simulator_clubs_resolve_exactly_once_against_english_directory():
+    resolved = real.resolve_fallback_teams(mocked_english_team_directory())
+    assert [team["name"] for team in resolved] == list(real.CLUBS)
+    assert len({team["team_id"] for team in resolved}) == len(real.CLUBS) == 20
+
+
+def test_fallback_missing_club_produces_friendly_error():
+    directory = mocked_english_team_directory()
     with pytest.raises(real.RealWorldDataError, match="Arsenal"):
         real.resolve_fallback_teams(directory[1:])
+
+
+def test_fallback_duplicate_team_ids_are_rejected():
+    directory = mocked_english_team_directory()
     directory[1]["team_id"] = directory[0]["team_id"]
     with pytest.raises(real.RealWorldDataError, match="duplicate API team ID"):
         real.resolve_fallback_teams(directory)
