@@ -38,6 +38,32 @@ from tactics import (
 )
 from dashboard import NAVIGATION, initialise_navigation, render_dashboard
 from ui_styles import apply_global_styles
+from real_world_data import RealWorldDataError, get_current_squad, get_premier_league_teams
+
+
+def render_real_world_data():
+    """Show a read-only API preview; never alter the fictional career state."""
+    st.header("Real World Data")
+    st.caption("Current 2026 Premier League clubs and registered squads from API-Football.")
+    try:
+        teams = get_premier_league_teams()
+        st.subheader("Current Premier League clubs")
+        st.write(", ".join(team["name"] for team in teams))
+        choices = {team["name"]: team for team in teams}
+        club = st.selectbox("Choose a real-world club", list(choices), index=None)
+        if club:
+            team = choices[club]
+            squad = get_current_squad(team["team_id"], team["name"])
+            st.subheader(club)
+            st.dataframe([{
+                "Player": player["name"],
+                "Age": player["age"],
+                "Position": player["position"],
+                "Shirt Number": player["shirt_number"],
+            } for player in squad], hide_index=True, use_container_width=True)
+    except RealWorldDataError as exc:
+        st.warning(str(exc))
+        st.info("Your fictional career is still available and has not been changed.")
 
 
 def render_transfer_market(active_club, career_squads, squad):
@@ -477,6 +503,9 @@ if "active_club" in st.session_state:
             st.dataframe(retirements, hide_index=True, use_container_width=True)
         else:
             st.caption("No players have retired during this career yet.")
+        st.stop()
+    if page == "Real World Data":
+        render_real_world_data()
         st.stop()
     # Tactics shares Matchday because selections and tactical changes are part
     # of the same stateful match flow.  No simulation work occurs when merely

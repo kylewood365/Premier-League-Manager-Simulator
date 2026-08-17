@@ -15,7 +15,7 @@ from morale import ensure_player_morale_form, form_score
 
 NAVIGATION = (
     "Dashboard", "Matchday", "Squad", "Tactics", "Transfers", "Scouting",
-    "Contracts", "Player Stats", "League", "Career",
+    "Contracts", "Player Stats", "League", "Career", "Real World Data",
 )
 
 
