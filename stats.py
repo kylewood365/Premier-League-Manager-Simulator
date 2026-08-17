@@ -73,6 +73,11 @@ def get_current_squad_statistics(squad, statistics, sort_by="Goals"):
             "Position": player["position"],
             "Age": player["age"],
             "Overall": player["overall"],
+            "Fitness": player.get("fitness", 100),
+            "Availability": (
+                f"Injured ({player.get('injury_gameweeks', 0)} GW)"
+                if player.get("injured", False) else "Available"
+            ),
             "Potential": player["potential"],
             "Wage": f"£{player['wage']:,}/week",
             "Contract": f"{player['contract_years']} year(s)",

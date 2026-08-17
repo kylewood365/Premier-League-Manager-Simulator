@@ -1,5 +1,7 @@
 """Simple transfer operations, kept separate from the Streamlit interface."""
 
+from fitness import ensure_player_health
+
 
 def format_money(amount):
     """Display a whole-pound amount in a familiar football format."""
@@ -27,6 +29,10 @@ def buy_player(squads, user_club, player_name, budget, wage_budget=None):
         if calculate_wage_spend(squads[user_club]) + player["wage"] > wage_budget:
             return False, budget, "This transfer would exceed your weekly wage budget."
 
+    ensure_player_health(player)
+    # Detailed AI health is not simulated, so a player arriving from an AI club
+    # is ready to join the manager's rotation.
+    player.update({"fitness": 100, "injured": False, "injury_gameweeks": 0})
     squads[selling_club].remove(player)
     squads[user_club].append(player)
     return True, budget - player["value"], f"Signed {player_name}!"
@@ -58,6 +64,8 @@ def sign_free_agent(squads, user_club, free_agents, player_name, contract_years,
         return False, "Choose a contract between 1 and 5 years."
     if calculate_wage_spend(squads[user_club]) + player["wage"] > wage_budget:
         return False, "This signing would exceed your weekly wage budget."
+    # Free agents keep an existing health state where one was recorded.
+    ensure_player_health(player)
     free_agents.remove(player)
     player["contract_years"] = contract_years
     player.pop("club", None)
