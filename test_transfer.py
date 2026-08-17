@@ -41,6 +41,7 @@ class TransferTests(unittest.TestCase):
         self.assertEqual(budget, self.budget - self.player["value"])
         self.assertIn(self.player, self.squads[self.user_club])
         self.assertNotIn(self.player, self.squads[self.selling_club])
+        self.assertEqual(self.player["club"], self.user_club)
 
     def test_unaffordable_purchase_is_rejected_without_moving_player(self):
         success, budget, _ = buy_player(
@@ -79,6 +80,7 @@ class TransferTests(unittest.TestCase):
         self.assertEqual(budget, self.budget + player["value"])
         self.assertNotIn(player, self.squads[self.user_club])
         self.assertIn(player, pool)
+        self.assertIsNone(player["club"])
 
     def test_transfers_change_players_available_for_starting_xi(self):
         original_name = self.squads[self.user_club][0]["name"]

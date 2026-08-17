@@ -23,6 +23,11 @@ def find_player(squads, player_name):
     return None, None
 
 
+def set_player_club(player, club):
+    """Keep mutable ownership metadata aligned with the career squad lists."""
+    player["club"] = club
+
+
 def buy_player(squads, user_club, player_name, budget, wage_budget=None,
                transfer_history=None, season=1, club_budgets=None,
                scouting_knowledge=None):
@@ -45,6 +50,7 @@ def buy_player(squads, user_club, player_name, budget, wage_budget=None,
     # is ready to join the manager's rotation.
     player.update({"fitness": 100, "injured": False, "injury_gameweeks": 0})
     squads[selling_club].remove(player)
+    set_player_club(player, user_club)
     squads[user_club].append(player)
     if scouting_knowledge is not None:
         from scouting import FULLY_SCOUTED, player_id
@@ -72,6 +78,7 @@ def sell_player(squads, user_club, player_name, budget, transfer_pool):
         return False, budget, "That player is no longer in your squad."
 
     squads[user_club].remove(player)
+    set_player_club(player, None)
     transfer_pool.append(player)
     return True, budget + player["value"], f"Sold {player_name}!"
 
@@ -95,7 +102,7 @@ def sign_free_agent(squads, user_club, free_agents, player_name, contract_years,
     player.update({"transfer_requested": False, "transfer_listed": False})
     free_agents.remove(player)
     player["contract_years"] = contract_years
-    player.pop("club", None)
+    set_player_club(player, user_club)
     squads[user_club].append(player)
     if scouting_knowledge is not None:
         from scouting import FULLY_SCOUTED, player_id

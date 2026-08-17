@@ -91,6 +91,7 @@ def process_retirements(
             youth = generate_youth_player(
                 player["position"], (member["name"] for member in squad), rng
             )
+            youth["club"] = club
             squad.append(youth)
             record = {
                 "player": player["name"],

@@ -58,6 +58,7 @@ def test_accept_moves_player_updates_budgets_wages_and_history_once():
     offer = make_offer(player, fee=fee)
     success, _ = accept_offer(offer, squads, "Arsenal", budgets, history, 1)
     assert success and player in squads["Chelsea"] and player not in squads["Arsenal"]
+    assert player["club"] == "Chelsea"
     assert budgets["Arsenal"] == user_before + fee
     assert budgets["Chelsea"] == ai_before - fee
     assert calculate_wage_spend(squads["Arsenal"]) == before_wages - player["wage"]
