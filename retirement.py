@@ -5,6 +5,7 @@ easy to test and lets ``app.py`` concentrate on presenting their results.
 """
 
 import random
+import uuid
 
 from data import calculate_player_value
 from contracts import calculate_weekly_wage
@@ -54,6 +55,7 @@ def generate_youth_player(position, existing_names=(), rng=None):
     overall = rng.randint(55, 72)
     potential = rng.randint(max(70, overall), 94)
     player = ensure_player_morale_form({
+        "id": f"youth-{uuid.uuid4().hex}",
         "name": name,
         "position": position,
         "age": age,
