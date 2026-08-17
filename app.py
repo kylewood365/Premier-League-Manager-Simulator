@@ -35,6 +35,7 @@ from tactics import (
     FORMATIONS, TACTICAL_STYLES, apply_substitutions,
     validate_bench, validate_starting_xi,
 )
+from dashboard import NAVIGATION, initialise_navigation, render_dashboard
 
 
 def render_transfer_market(active_club, career_squads, squad):
@@ -323,8 +324,10 @@ st.write("Choose a Premier League club and build a multi-season career.")
 if "league_table" not in st.session_state:
     st.session_state["league_table"] = create_league_table(CLUBS)
 
-selected_club = st.selectbox("Choose your club", CLUBS, index=None)
-if st.button("Start Career"):
+selected_club = None
+if "active_club" not in st.session_state:
+    selected_club = st.selectbox("Choose your club", CLUBS, index=None)
+if "active_club" not in st.session_state and st.button("Start Career"):
     if selected_club:
         # A new career always receives a fresh schedule and league table.
         st.session_state["active_club"] = selected_club
@@ -362,6 +365,7 @@ if st.button("Start Career"):
         st.session_state.pop("season_summary", None)
         st.session_state.pop("gameweek_results", None)
         st.session_state["match_phase"] = "Kickoff"
+        st.session_state["navigation"] = "Dashboard"
         st.success(f"Welcome to {selected_club}! Your career starts at Gameweek 1.")
     else:
         st.warning("Please choose a club before starting your career.")
@@ -373,6 +377,82 @@ if "active_club" in st.session_state:
     gameweek = st.session_state["current_gameweek"]
     fixture = get_club_fixture(st.session_state["fixtures"], gameweek, active_club)
     is_complete = gameweek in st.session_state["completed_gameweeks"]
+
+    initialise_navigation(st.session_state)
+    page = st.sidebar.radio("Manager Menu", NAVIGATION, key="navigation")
+    st.sidebar.caption(
+        f"{active_club} · Season {st.session_state['season_number']} · "
+        f"Gameweek {gameweek}"
+    )
+
+    if page == "Dashboard":
+        render_dashboard(st, st.session_state, CLUB_WAGE_BUDGETS[active_club], format_money)
+        st.stop()
+    if page == "Transfers":
+        st.header("Transfers")
+        transfer_tab, offers_tab = st.tabs(["Market & Free Agents", "Offers & History"])
+        with transfer_tab:
+            render_transfer_market(active_club, career_squads, squad)
+        with offers_tab:
+            render_transfer_offers(active_club, career_squads)
+        st.stop()
+    if page == "Scouting":
+        render_scouting(active_club, career_squads)
+        st.stop()
+    if page == "Contracts":
+        st.header("Contracts")
+        spend, budget = calculate_wage_spend(squad), CLUB_WAGE_BUDGETS[active_club]
+        cols = st.columns(3)
+        cols[0].metric("Current Wage Spend", f"{format_money(spend)}/week")
+        cols[1].metric("Wage Budget", f"{format_money(budget)}/week")
+        cols[2].metric("Remaining", f"{format_money(budget - spend)}/week")
+        contract_name = st.selectbox("Player contract", [p["name"] for p in squad], index=None)
+        contract_player = next((p for p in squad if p["name"] == contract_name), None)
+        extension = st.selectbox("Contract extension", [1, 2, 3, 4])
+        if contract_player:
+            st.info(f"{contract_player['contract_years']} year(s) remaining · "
+                    f"{format_money(contract_player['wage'])}/week · Requested: "
+                    f"{format_money(requested_weekly_wage(contract_player))}/week")
+        if st.button("Renew Contract", disabled=contract_player is None):
+            success, message = renew_contract(contract_player, extension, squad, budget)
+            (st.success if success else st.warning)(message)
+        st.stop()
+    if page in {"Squad", "Player Stats"}:
+        st.header(page)
+        sort_by = st.selectbox("Sort by", ["Goals", "Appearances", "Overall", "Form", "Morale", "Player"])
+        st.dataframe(get_current_squad_statistics(squad, st.session_state["player_statistics"], sort_by),
+                     hide_index=True, use_container_width=True)
+        st.caption("Morale is player happiness. Form is recent individual match performance; Potential is projected future Overall.")
+        st.stop()
+    if page == "League":
+        st.header("Premier League")
+        st.caption(f"Season {st.session_state['season_number']} · Gameweek {gameweek}")
+        st.dataframe(get_sorted_league_table(st.session_state["league_table"]), hide_index=True,
+                     use_container_width=True)
+        with st.expander("League fixture and result history"):
+            if st.session_state.get("gameweek_results"):
+                st.dataframe(st.session_state["gameweek_results"], hide_index=True, use_container_width=True)
+            else:
+                st.write("No results recorded for the current gameweek.")
+        st.stop()
+    if page == "Career":
+        st.header("Career")
+        history = st.session_state.setdefault("career_history", [])
+        st.subheader("Completed Seasons")
+        if history:
+            st.dataframe(history, hide_index=True, use_container_width=True)
+        else:
+            st.info("Complete your first season to begin Career History.")
+        st.subheader("Retirement History")
+        retirements = st.session_state.setdefault("retirement_history", [])
+        if retirements:
+            st.dataframe(retirements, hide_index=True, use_container_width=True)
+        else:
+            st.caption("No players have retired during this career yet.")
+        st.stop()
+    # Tactics shares Matchday because selections and tactical changes are part
+    # of the same stateful match flow.  No simulation work occurs when merely
+    # switching navigation sections.
 
     st.header(f"Season {st.session_state['season_number']}")
     st.metric("Transfer Budget", format_money(st.session_state["transfer_budget"]))
@@ -656,11 +736,6 @@ if "active_club" in st.session_state:
                 )
                 st.rerun()
 
-    if not is_complete:
-        render_transfer_market(active_club, career_squads, squad)
-        render_transfer_offers(active_club, career_squads)
-        render_scouting(active_club, career_squads)
-
     if is_complete:
         completed_reports = process_scouting(
             st.session_state["scouting_assignments"],
@@ -687,9 +762,6 @@ if "active_club" in st.session_state:
                 f"Transfer Offer\n\n{offer['buying_club']} have offered "
                 f"{format_money(offer['offered_fee'])} for {offer['player']}."
             )
-        render_transfer_market(active_club, career_squads, squad)
-        render_transfer_offers(active_club, career_squads)
-        render_scouting(active_club, career_squads)
         st.subheader(f"Gameweek {gameweek} Results")
         for result in st.session_state["gameweek_results"]:
             scoreline = (
