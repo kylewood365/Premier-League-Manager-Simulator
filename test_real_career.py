@@ -13,7 +13,7 @@ from fixtures import generate_fixtures
 from game import simulate_gameweek
 from league import create_league_table
 from real_career import (
-    build_real_career_squads, create_real_career_player,
+    build_real_career_snapshot, build_real_career_squads, create_real_career_player,
     validate_real_career_squads,
 )
 from real_world_data import RealWorldDataError
@@ -46,8 +46,8 @@ def mocked_api_league(size=20, players_per_club=16):
 def build_mocked(size=20, players_per_club=16):
     teams, squads = mocked_api_league(size, players_per_club)
     with (
-        patch("real_career.get_premier_league_teams", return_value=teams),
-        patch("real_career.get_current_squad", side_effect=lambda team_id, _club: squads[team_id]),
+        patch("real_career.get_real_data_source", return_value=("full", teams)),
+        patch("real_career.get_current_squad", side_effect=lambda team_id, _club, paced=False: squads[team_id]),
         patch("real_career.get_premier_league_player_statistics", return_value=[]),
     ):
         return build_real_career_squads()
@@ -76,6 +76,30 @@ def test_real_snapshot_validation_is_atomic_and_strict():
         build_mocked(size=19)
     with pytest.raises(RealWorldDataError, match="11 usable"):
         build_mocked(players_per_club=10)
+
+
+def test_seasonless_snapshot_skips_statistics_and_paces_current_squads():
+    teams, squads = mocked_api_league()
+    calls = []
+    with patch("real_career.get_real_data_source", return_value=("seasonless", teams)), patch(
+        "real_career.get_premier_league_player_statistics", side_effect=AssertionError
+    ), patch("real_career.get_current_squad", side_effect=lambda team_id, club, paced=False:
+             calls.append((team_id, club, paced)) or squads[team_id]):
+        snapshot, mode = build_real_career_snapshot()
+    assert mode == "seasonless" and len(snapshot) == 20
+    assert len(calls) == 20 and all(call[2] for call in calls)
+    assert snapshot["API Club 0"][0]["id"] == "api-player-0"
+
+
+def test_full_snapshot_preserves_statistics_path():
+    teams, squads = mocked_api_league()
+    with patch("real_career.get_real_data_source", return_value=("full", teams)), patch(
+        "real_career.get_premier_league_player_statistics", return_value=[]
+    ) as statistics, patch("real_career.get_current_squad",
+                           side_effect=lambda team_id, _club, paced=False: squads[team_id]):
+        snapshot, mode = build_real_career_snapshot()
+    assert mode == "full" and len(snapshot) == 20
+    statistics.assert_called_once_with()
 
 
 def test_broad_positions_field_xi_and_fictional_specific_positions_still_work():
@@ -171,7 +195,7 @@ def test_mocked_real_career_end_to_end_transfers_finance_and_next_season():
     }
     ids_and_clubs = {(p["id"], p.get("api_player_id")): club
                      for club, squad in squads.items() for p in squad}
-    with (patch("real_career.get_premier_league_teams", side_effect=AssertionError),
+    with (patch("real_career.get_real_data_source", side_effect=AssertionError),
           patch("real_career.get_current_squad", side_effect=AssertionError),
           patch("real_career.get_premier_league_player_statistics", side_effect=AssertionError)):
         start_next_season(state, state["career_clubs"], random.Random(9))

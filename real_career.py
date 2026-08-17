@@ -6,9 +6,8 @@ from fitness import ensure_player_health
 from morale import ensure_player_morale_form
 from player_ratings import create_simulator_player
 from real_world_data import (
-    CURRENT_SEASON, RealWorldDataError, get_current_squad,
-    get_premier_league_player_statistics, get_premier_league_teams,
-    join_squad_statistics,
+    CURRENT_SEASON, RealWorldDataError, get_current_squad, get_real_data_source,
+    get_premier_league_player_statistics, join_squad_statistics,
 )
 from squad_management import ensure_squad_management
 from tactics import FORMATIONS, can_field_formation
@@ -56,19 +55,28 @@ def validate_real_career_squads(squads):
     return True
 
 
-def build_real_career_squads():
-    """Fetch, rate and transform API data into a frozen-at-kickoff snapshot."""
-    teams = get_premier_league_teams()
-    statistics = get_premier_league_player_statistics()
+def build_real_career_snapshot(progress=None):
+    """Fetch and atomically prepare squads plus their frozen source mode."""
+    mode, teams = get_real_data_source()
+    statistics = get_premier_league_player_statistics() if mode == "full" else []
     squads = {}
-    for team in teams:
-        raw = get_current_squad(team["team_id"], team["name"])
+    for index, team in enumerate(teams, 1):
+        if progress:
+            progress(team["name"], index, len(teams))
+        raw = get_current_squad(
+            team["team_id"], team["name"], paced=(mode == "seasonless")
+        )
         squads[team["name"]] = [
             create_real_career_player(player)
             for player in join_squad_statistics(raw, statistics)
         ]
     validate_real_career_squads(squads)
-    return squads
+    return squads, mode
+
+
+def build_real_career_squads(progress=None):
+    """Compatibility wrapper returning the mode-aware prepared squads."""
+    return build_real_career_snapshot(progress)[0]
 
 
 REAL_DATA_SEASON = CURRENT_SEASON

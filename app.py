@@ -41,10 +41,10 @@ from dashboard import NAVIGATION, initialise_navigation, render_dashboard
 from ui_styles import apply_global_styles
 from real_world_data import (
     RealWorldDataError, get_current_squad, get_premier_league_player_statistics,
-    get_premier_league_teams, is_api_configured, join_squad_statistics,
+    get_real_data_source, is_api_configured, join_squad_statistics,
 )
 from player_ratings import create_simulator_player
-from real_career import REAL_DATA_SEASON, build_real_career_squads
+from real_career import REAL_DATA_SEASON, build_real_career_snapshot
 
 
 def render_real_world_data():
@@ -54,14 +54,16 @@ def render_real_world_data():
     if st.session_state.get("career_source") == "real":
         st.info("Real World Data is a live/cached preview. Your active career uses the snapshot taken when it began.")
     try:
-        teams = get_premier_league_teams()
+        mode, teams = get_real_data_source()
         st.subheader("Current Premier League clubs")
         st.write(", ".join(team["name"] for team in teams))
         choices = {team["name"]: team for team in teams}
         club = st.selectbox("Choose a real-world club", list(choices), index=None)
         if club:
             team = choices[club]
-            squad = get_current_squad(team["team_id"], team["name"])
+            squad = get_current_squad(
+                team["team_id"], team["name"], paced=(mode == "seasonless")
+            )
             st.subheader(club)
             basic_tab, ratings_tab = st.tabs(["Basic Squad", "Simulator Ratings"])
             with basic_tab:
@@ -77,9 +79,17 @@ def render_real_world_data():
                     "ratings or salary data."
                 )
                 try:
-                    joined = join_squad_statistics(
-                        squad, get_premier_league_player_statistics()
+                    if mode == "seasonless":
+                        st.info(
+                            "Current registered squads are supplied by API-Football. "
+                            "Current-season performance statistics are unavailable on this "
+                            "API plan, so ratings, values and wages use simulator-generated "
+                            "fallback estimates."
+                        )
+                    statistics = (
+                        get_premier_league_player_statistics() if mode == "full" else []
                     )
+                    joined = join_squad_statistics(squad, statistics)
                     rated = [create_simulator_player(player) for player in joined]
                     st.dataframe([{
                         "Player": player["name"], "Age": player["age"],
@@ -426,7 +436,8 @@ if "active_club" not in st.session_state:
             "overwritten by real-world updates."
         )
         try:
-            selectable_clubs = [team["name"] for team in get_premier_league_teams()]
+            _, real_teams = get_real_data_source()
+            selectable_clubs = [team["name"] for team in real_teams]
         except RealWorldDataError as exc:
             selectable_clubs = []
             st.warning(str(exc))
@@ -435,9 +446,18 @@ if "active_club" not in st.session_state:
 if "active_club" not in st.session_state and st.button("Start Career"):
     if selected_club:
         try:
-            with st.spinner("Preparing real Premier League squads..." if source == "real" else "Preparing fictional squads..."):
+            with st.spinner("Preparing Real Squads..." if source == "real" else "Preparing fictional squads..."):
                 # Everything is prepared locally; session state changes only after success.
-                squads = build_real_career_squads() if source == "real" else deepcopy(SQUADS)
+                if source == "real":
+                    progress = st.empty()
+                    squads, real_data_mode = build_real_career_snapshot(
+                        lambda club, index, total: progress.write(
+                            f"Loading {club} ({index}/{total})"
+                        )
+                    )
+                    progress.empty()
+                else:
+                    squads, real_data_mode = deepcopy(SQUADS), None
                 clubs = list(squads) if source == "real" else list(CLUBS)
                 if selected_club not in squads:
                     raise RealWorldDataError("The selected club is no longer in the returned league snapshot.")
@@ -467,6 +487,7 @@ if "active_club" not in st.session_state and st.button("Start Career"):
                 }
                 if source == "real":
                     new_state["real_data_season"] = REAL_DATA_SEASON
+                    new_state["real_data_mode"] = real_data_mode
             st.session_state.update(new_state)
             st.success(f"Welcome to {selected_club}! Your career starts at Gameweek 1.")
         except RealWorldDataError as exc:
@@ -483,7 +504,10 @@ if "active_club" in st.session_state:
     career_squads = st.session_state["career_squads"]
     squad = career_squads[active_club]
     if st.session_state.get("career_source") == "real":
-        st.caption(f"Career database: Real Premier League snapshot · API season {st.session_state.get('real_data_season', REAL_DATA_SEASON)}")
+        if st.session_state.get("real_data_mode", "full") == "seasonless":
+            st.caption("Career database: Real Premier League snapshot · Current squads · Simulator fallback ratings")
+        else:
+            st.caption(f"Career database: Real Premier League snapshot · API season {st.session_state.get('real_data_season', REAL_DATA_SEASON)}")
     else:
         st.caption("Career database: Fictional squads")
     gameweek = st.session_state["current_gameweek"]
