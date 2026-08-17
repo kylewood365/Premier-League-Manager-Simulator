@@ -65,6 +65,17 @@ class TacticsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             apply_substitutions(xi, bench, changes)
 
+    def test_substitution_ids_distinguish_duplicate_names(self):
+        xi, bench = self.squad[:11], self.squad[11:]
+        xi[0]["name"] = "Duplicate"
+        bench[0]["name"] = "Duplicate"
+        result = apply_substitutions(
+            xi, bench, [(xi[0]["id"], bench[0]["id"])],
+        )
+        self.assertNotIn(xi[0]["id"], [player["id"] for player in result])
+        self.assertIn(bench[0]["id"], [player["id"] for player in result])
+        self.assertEqual(bench[0]["name"], "Duplicate")
+
     def test_every_tactical_style_changes_or_preserves_strength_as_documented(self):
         results = {style: tactical_strength(80, style) for style in TACTICAL_STYLES}
         self.assertEqual(results["Balanced"], (80, 80))

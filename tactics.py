@@ -48,6 +48,11 @@ POSITION_GROUPS = {
 }
 
 
+def _player_identity(player):
+    """Return a stable identity, retaining support for older name-only records."""
+    return player.get("id", player["name"])
+
+
 def can_field_formation(players, formation):
     """Return whether a squad can fill a formation, including broad API roles."""
     if formation not in FORMATIONS:
@@ -69,7 +74,7 @@ def validate_starting_xi(players, formation):
     """Validate 11 healthy, unique players can fill every formation slot."""
     if formation not in FORMATIONS:
         raise ValueError("Unknown formation.")
-    if len(players) != 11 or len({player["name"] for player in players}) != 11:
+    if len(players) != 11 or len({_player_identity(player) for player in players}) != 11:
         raise ValueError("A starting XI must contain 11 different players.")
     if any(player.get("injured", False) for player in players):
         raise ValueError("Injured players cannot be selected in the starting XI.")
@@ -86,10 +91,10 @@ def validate_bench(bench, starting_xi):
     """Validate a healthy bench of no more than seven non-starters."""
     if len(bench) > 7:
         raise ValueError("The bench can contain at most 7 players.")
-    names = [player["name"] for player in bench]
-    if len(names) != len(set(names)):
+    identities = [_player_identity(player) for player in bench]
+    if len(identities) != len(set(identities)):
         raise ValueError("A player cannot be named on the bench twice.")
-    if set(names) & {player["name"] for player in starting_xi}:
+    if set(identities) & {_player_identity(player) for player in starting_xi}:
         raise ValueError("Bench players cannot also be in the starting XI.")
     if any(player.get("injured", False) for player in bench):
         raise ValueError("Injured players cannot be selected on the bench.")
@@ -104,22 +109,30 @@ def apply_substitutions(starting_xi, bench, substitutions):
     if len(substitutions) > 5:
         raise ValueError("No more than 5 substitutions are allowed.")
     pitch = list(starting_xi)
-    bench_names = {player["name"]: player for player in bench}
+    bench_players = {_player_identity(player): player for player in bench}
+    # Name-based substitutions from existing saves and callers remain supported.
+    bench_players.update({player["name"]: player for player in bench})
     used = set()
     for change in substitutions:
-        off_name, on_name = change
+        off_identity, on_identity = change
+        pitch_identities = {_player_identity(player) for player in pitch}
         pitch_names = {player["name"] for player in pitch}
-        if off_name not in pitch_names:
+        if off_identity not in pitch_identities and off_identity not in pitch_names:
             raise ValueError("The player coming off must currently be on the pitch.")
-        if on_name not in bench_names:
+        if on_identity not in bench_players:
             raise ValueError("The player coming on must be on the bench.")
-        if on_name in used:
+        incoming = bench_players[on_identity]
+        incoming_identity = _player_identity(incoming)
+        if incoming_identity in used:
             raise ValueError("The same substitute cannot enter twice.")
-        incoming = bench_names[on_name]
         if incoming.get("injured", False):
             raise ValueError("An injured player cannot be brought on.")
-        pitch = [incoming if player["name"] == off_name else player for player in pitch]
-        used.add(on_name)
+        pitch = [
+            incoming if (_player_identity(player) == off_identity
+                         or player["name"] == off_identity) else player
+            for player in pitch
+        ]
+        used.add(incoming_identity)
     return pitch
 
 
