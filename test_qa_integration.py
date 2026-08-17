@@ -15,10 +15,12 @@ def test_ai_lineup_uses_the_transferred_player_from_career_state():
     squads = deepcopy(SQUADS)
     player = squads["Manchester City"][0]
     player["overall"] = 99
-    success, _, _ = buy_player(squads, "Burnley", player["name"], 500_000_000)
+    success, _, _ = buy_player(
+        squads, "Coventry City", player["name"], 500_000_000
+    )
 
     assert success
-    assert player in get_best_starting_xi("Burnley", squads)
+    assert player in get_best_starting_xi("Coventry City", squads)
     assert player not in get_best_starting_xi("Manchester City", squads)
 
 
