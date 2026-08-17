@@ -9,6 +9,7 @@ from league import create_league_table
 from morale import reset_morale_form_for_new_season
 from stats import reset_player_statistics
 from squad_management import reset_squad_management_for_new_season
+from transfer_offers import handle_new_season_offers
 
 
 def record_season_history(history, season_number, summary):
@@ -43,6 +44,8 @@ def start_next_season(state, clubs, rng=None):
     state["processed_health_gameweeks"] = set()
     state["processed_discipline_gameweeks"] = set()
     state["processed_morale_gameweeks"] = set()
+    state["processed_offer_gameweeks"] = set()
+    handle_new_season_offers(state.setdefault("transfer_offers", []))
     reset_health_for_new_season(state["career_squads"][state["active_club"]])
     reset_discipline_for_new_season(state["career_squads"][state["active_club"]])
     reset_morale_form_for_new_season(state["career_squads"][state["active_club"]])
