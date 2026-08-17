@@ -47,6 +47,17 @@ from player_ratings import create_simulator_player
 from real_career import REAL_DATA_SEASON, build_real_career_snapshot
 
 
+def matchday_player_label(player):
+    """Build a display-only matchday label without changing player data."""
+    return f'{player["name"]} ({player["position"]})'
+
+
+def players_for_ids(players, selected_ids):
+    """Resolve a widget's stable player IDs in squad order."""
+    selected = set(selected_ids)
+    return [player for player in players if player["id"] in selected]
+
+
 def render_real_world_data():
     """Show a read-only API preview; never alter the fictional career state."""
     st.header("Real World Data")
@@ -780,21 +791,30 @@ if "active_club" in st.session_state:
             "Tactical style", TACTICAL_STYLES, key=f"style_{gameweek}",
             disabled=phase != "Kickoff",
         )
-        selected_names = st.multiselect(
+        available_by_id = {player["id"]: player for player in available_players}
+
+        def player_label(identifier):
+            return matchday_player_label(available_by_id[identifier])
+
+        selected_ids = st.multiselect(
             "Select exactly 11 players",
-            [player["name"] for player in available_players],
+            list(available_by_id),
+            format_func=player_label,
             key=f"starting_xi_{active_club}_{gameweek}",
             disabled=phase != "Kickoff",
         )
-        selected_xi = [player for player in squad if player["name"] in selected_names]
-        bench_names = st.multiselect(
+        selected_id_set = set(selected_ids)
+        selected_xi = players_for_ids(squad, selected_ids)
+        bench_ids = st.multiselect(
             "Bench (up to 7)",
-            [p["name"] for p in available_players if p["name"] not in selected_names],
+            [player["id"] for player in available_players
+             if player["id"] not in selected_id_set],
+            format_func=player_label,
             key=f"bench_{active_club}_{gameweek}",
             max_selections=7,
             disabled=phase != "Kickoff",
         )
-        bench = [player for player in squad if player["name"] in bench_names]
+        bench = players_for_ids(squad, bench_ids)
 
         selection_error = None
         try:
@@ -849,9 +869,13 @@ if "active_club" in st.session_state:
             existing = st.session_state.setdefault("match_substitutions", [])
             current_pitch = apply_substitutions(selected_xi, bench, existing)
             used_on = {on for _, on in existing}
-            off = st.selectbox("Player off", [p["name"] for p in current_pitch], index=None)
+            off = st.selectbox(
+                "Player off", [p["id"] for p in current_pitch], index=None,
+                format_func=player_label,
+            )
             on = st.selectbox(
-                "Player on", [p["name"] for p in bench if p["name"] not in used_on], index=None,
+                "Player on", [p["id"] for p in bench if p["id"] not in used_on],
+                index=None, format_func=player_label,
             )
             if st.button("Make substitution", disabled=off is None or on is None or len(existing) >= 5):
                 try:
