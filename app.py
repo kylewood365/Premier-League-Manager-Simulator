@@ -1,4 +1,5 @@
 from copy import deepcopy
+from html import escape
 import random
 
 import streamlit as st
@@ -36,6 +37,7 @@ from tactics import (
     validate_bench, validate_starting_xi,
 )
 from dashboard import NAVIGATION, initialise_navigation, render_dashboard
+from ui_styles import apply_global_styles
 
 
 def render_transfer_market(active_club, career_squads, squad):
@@ -329,9 +331,19 @@ def render_transfer_offers(active_club, career_squads):
         st.write("No completed transfers in this career.")
 
 
-st.set_page_config(page_title="Premier League Manager Simulator", page_icon="⚽")
-st.title("Premier League Manager Simulator")
-st.write("Choose a Premier League club and build a multi-season career.")
+st.set_page_config(
+    page_title="PL Manager · Career Mode", page_icon="⚽", layout="wide",
+    initial_sidebar_state="expanded",
+)
+apply_global_styles(st)
+st.markdown(
+    """<section class="game-hero">
+      <div class="eyebrow">The touchline is yours</div>
+      <div class="game-title">Premier League<br>Manager Simulator</div>
+      <div class="game-subtitle">Build the squad. Set the standard. Shape a career across every matchday.</div>
+    </section>""",
+    unsafe_allow_html=True,
+)
 
 if "league_table" not in st.session_state:
     st.session_state["league_table"] = create_league_table(CLUBS)
@@ -391,6 +403,10 @@ if "active_club" in st.session_state:
     is_complete = gameweek in st.session_state["completed_gameweeks"]
 
     initialise_navigation(st.session_state)
+    st.sidebar.markdown(
+        '<div class="sidebar-brand"><strong>⚽ PL Manager</strong>Career Mode</div>',
+        unsafe_allow_html=True,
+    )
     page = st.sidebar.radio("Manager Menu", NAVIGATION, key="navigation")
     st.sidebar.caption(
         f"{active_club} · Season {st.session_state['season_number']} · "
@@ -518,6 +534,17 @@ if "active_club" in st.session_state:
             f"— {active_club} are **{venue}**"
         )
 
+    current_phase = st.session_state.setdefault("match_phase", "Kickoff")
+    phase_labels = ("Pre-match", "Kickoff", "Half-time", "Second half", "Full-time")
+    active_phase = "Pre-match" if current_phase == "Kickoff" else current_phase
+    st.markdown(
+        '<div class="phase-strip">' + ''.join(
+            f'<span class="{"active" if label == active_phase else ""}">{label}</span>'
+            for label in phase_labels
+        ) + '</div>',
+        unsafe_allow_html=True,
+    )
+
     st.subheader(f"{active_club} Squad")
     squad_table = [
         {
@@ -621,7 +648,7 @@ if "active_club" in st.session_state:
             st.write("No league matches completed this season.")
 
     if not is_complete:
-        phase = st.session_state.setdefault("match_phase", "Kickoff")
+        phase = current_phase
         st.subheader(f"Match Flow: {phase}")
         available_players = [player for player in squad if is_available(player)]
         if len(available_players) < 11:
@@ -791,6 +818,15 @@ if "active_club" in st.session_state:
                 f"{result['away_score']} {result['away_club']}"
             )
             if active_club in (result["home_club"], result["away_club"]):
+                st.markdown(
+                    '<div class="match-card"><div class="eyebrow">Full Time</div>'
+                    f'<div class="match-teams"><span>{escape(result["home_club"])} '
+                    f'<strong>{result["home_score"]}</strong></span><span class="versus">—</span>'
+                    f'<span><strong>{result["away_score"]}</strong> '
+                    f'{escape(result["away_club"])}</span></div>'
+                    f'<div class="match-meta">Gameweek {gameweek}</div></div>',
+                    unsafe_allow_html=True,
+                )
                 st.success(f"⭐ **{scoreline}** — Your match")
                 stats = result["match_stats"]
                 st.markdown("### Match Stats")

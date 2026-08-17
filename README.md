@@ -33,6 +33,19 @@ club's strength, while the other nine fixtures are simulated automatically
 using each club's best XI. Results update the full league table before you move
 on to the next gameweek.
 
+## Custom Visual Assets
+
+The interface uses a dark stadium-inspired gradient by default. To use your own
+stadium atmosphere, place a JPEG image at:
+
+```text
+assets/stadium-background.jpg
+```
+
+The image is centred, covers the viewport, and receives a dark readability
+overlay. If the file is missing or cannot be read, the app automatically falls
+back to the built-in gradient without displaying a broken image.
+
 ## Run the tests
 
 ```bash
