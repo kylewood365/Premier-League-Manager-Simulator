@@ -2,7 +2,6 @@
 
 import random
 
-
 POSITION_SCORING_WEIGHTS = {
     "ST": 10,
     "LW": 7,
@@ -18,9 +17,12 @@ POSITION_SCORING_WEIGHTS = {
 
 def create_player_statistics(squad):
     """Create empty season totals for every player in a squad."""
-    return {
-        player["name"]: {"appearances": 0, "goals": 0} for player in squad
-    }
+    return {player["name"]: {"appearances": 0, "goals": 0} for player in squad}
+
+
+def reset_player_statistics(squad):
+    """Start new appearance and goal totals for the current squad."""
+    return create_player_statistics(squad)
 
 
 def ensure_player_statistics(statistics, squad):

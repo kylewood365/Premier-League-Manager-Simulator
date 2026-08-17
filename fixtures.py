@@ -1,13 +1,15 @@
 """Premier League fixture and gameweek helpers."""
 
 
-def generate_fixtures(clubs):
+def generate_fixtures(clubs, rng=None):
     """Create a 38-gameweek double round-robin schedule for 20 clubs."""
     if len(clubs) != 20 or len(set(clubs)) != 20:
         raise ValueError("Fixtures require exactly 20 different clubs.")
 
     # The circle method fixes one club and rotates the other 19 each week.
     rotation = list(clubs)
+    if rng is not None:
+        rng.shuffle(rotation)
     first_half = []
     for round_index in range(len(clubs) - 1):
         matches = []
