@@ -5,6 +5,7 @@ import random
 
 from data import calculate_team_strength, get_best_starting_xi
 from league import update_league_table
+from stats import assign_goalscorers, record_match_statistics
 
 
 def _score_goals(expected_goals, random_generator):
@@ -65,6 +66,8 @@ def simulate_gameweek(
     table,
     completed_gameweeks,
     rng=None,
+    player_statistics=None,
+    recorded_stat_gameweeks=None,
 ):
     """Play all ten matches in a gameweek and update the table once."""
     if gameweek_number in completed_gameweeks:
@@ -98,6 +101,25 @@ def simulate_gameweek(
             match["home_score"],
             match["away_score"],
         )
+        if user_club in (match["home_club"], match["away_club"]):
+            user_goals = (
+                match["home_score"]
+                if match["home_club"] == user_club
+                else match["away_score"]
+            )
+            match["goal_events"] = assign_goalscorers(
+                user_starting_xi, user_goals, rng
+            )
+            if player_statistics is not None:
+                record_match_statistics(
+                    player_statistics,
+                    user_starting_xi,
+                    match["goal_events"],
+                    gameweek_number,
+                    recorded_stat_gameweeks
+                    if recorded_stat_gameweeks is not None
+                    else completed_gameweeks,
+                )
         results.append(match)
 
     completed_gameweeks.add(gameweek_number)
