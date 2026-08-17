@@ -6,6 +6,7 @@ import streamlit as st
 from career import record_season_history, start_next_season
 from contracts import calculate_wage_spend, renew_contract, requested_weekly_wage
 from data import CLUBS, CLUB_BUDGETS, CLUB_WAGE_BUDGETS, SQUADS, calculate_team_strength
+from discipline import availability_status
 from fixtures import advance_gameweek, generate_fixtures, get_club_fixture
 from fitness import is_available
 from game import simulate_gameweek, simulate_half
@@ -169,6 +170,7 @@ if st.button("Start Career"):
         )
         st.session_state["recorded_stat_gameweeks"] = set()
         st.session_state["processed_health_gameweeks"] = set()
+        st.session_state["processed_discipline_gameweeks"] = set()
         st.session_state["processed_seasons"] = set()
         st.session_state["season_number"] = 1
         st.session_state["career_history"] = []
@@ -248,10 +250,7 @@ if "active_club" in st.session_state:
             "Age": player["age"],
             "Overall": player["overall"],
             "Fitness": player.get("fitness", 100),
-            "Availability": (
-                f"Injured ({player.get('injury_gameweeks', 0)} GW)"
-                if player.get("injured", False) else "Available"
-            ),
+            "Availability": availability_status(player),
             "Potential": player["potential"],
             "Wage": f"{format_money(player['wage'])}/week",
             "Contract": f"{player['contract_years']} year(s)",
@@ -368,6 +367,9 @@ if "active_club" in st.session_state:
                     processed_health_gameweeks=st.session_state[
                         "processed_health_gameweeks"
                     ],
+                    processed_discipline_gameweeks=st.session_state.setdefault(
+                        "processed_discipline_gameweeks", set()
+                    ),
                     formation=formation,
                     tactical_style=second_style,
                     bench=bench,
@@ -390,10 +392,16 @@ if "active_club" in st.session_state:
             )
             if active_club in (result["home_club"], result["away_club"]):
                 st.success(f"⭐ **{scoreline}** — Your match")
-                st.write("**Goals:**")
-                if result["goal_events"]:
-                    for event in result["goal_events"]:
-                        st.write(f"{event['player']} {event['minute']}'")
+                st.write("**Match events:**")
+                match_events = [
+                    {**event, "label": "Goal"} for event in result["goal_events"]
+                ] + [
+                    {**event, "label": "Yellow Card" if event["type"] == "yellow" else "Red Card"}
+                    for event in result.get("card_events", [])
+                ]
+                if match_events:
+                    for event in sorted(match_events, key=lambda item: item["minute"]):
+                        st.write(f"{event['minute']}' {event['label']} — {event['player']}")
                 else:
                     st.write("None")
                 for event in result.get("injury_events", []):
@@ -403,6 +411,8 @@ if "active_club" in st.session_state:
                     )
                 for player_name in result.get("recovery_events", []):
                     st.success(f"{player_name} has recovered and is available again.")
+                for player_name in result.get("suspension_recovery_events", []):
+                    st.success(f"{player_name} has served their suspension and is available again.")
             else:
                 st.write(scoreline)
 

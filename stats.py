@@ -2,6 +2,8 @@
 
 import random
 
+from discipline import availability_status
+
 POSITION_SCORING_WEIGHTS = {
     "ST": 10,
     "LW": 7,
@@ -17,6 +19,7 @@ POSITION_SCORING_WEIGHTS = {
 
 def create_player_statistics(squad):
     """Create empty season totals for every player in a squad."""
+    # Card keys are added on first use, keeping older saved statistics compatible.
     return {player["name"]: {"appearances": 0, "goals": 0} for player in squad}
 
 
@@ -28,7 +31,9 @@ def reset_player_statistics(squad):
 def ensure_player_statistics(statistics, squad):
     """Give newly signed players their own empty totals."""
     for player in squad:
-        statistics.setdefault(player["name"], {"appearances": 0, "goals": 0})
+        totals = statistics.setdefault(player["name"], {})
+        for key in ("appearances", "goals"):
+            totals.setdefault(key, 0)
     return statistics
 
 
@@ -49,7 +54,7 @@ def assign_goalscorers(starting_xi, goal_count, rng=None):
 
 
 def record_match_statistics(
-    statistics, starting_xi, goal_events, gameweek, recorded_gameweeks
+    statistics, starting_xi, goal_events, gameweek, recorded_gameweeks, card_events=None
 ):
     """Record a completed match once, including appearances and goals."""
     if gameweek in recorded_gameweeks:
@@ -60,6 +65,10 @@ def record_match_statistics(
         statistics[player["name"]]["appearances"] += 1
     for event in goal_events:
         statistics[event["player"]]["goals"] += 1
+    for event in card_events or []:
+        key = "yellow_cards" if event["type"] == "yellow" else "red_cards"
+        statistics[event["player"]].setdefault(key, 0)
+        statistics[event["player"]][key] += 1
     recorded_gameweeks.add(gameweek)
     return True
 
@@ -74,15 +83,14 @@ def get_current_squad_statistics(squad, statistics, sort_by="Goals"):
             "Age": player["age"],
             "Overall": player["overall"],
             "Fitness": player.get("fitness", 100),
-            "Availability": (
-                f"Injured ({player.get('injury_gameweeks', 0)} GW)"
-                if player.get("injured", False) else "Available"
-            ),
+            "Availability": availability_status(player),
             "Potential": player["potential"],
             "Wage": f"£{player['wage']:,}/week",
             "Contract": f"{player['contract_years']} year(s)",
             "Appearances": statistics[player["name"]]["appearances"],
             "Goals": statistics[player["name"]]["goals"],
+            "Yellow Cards": statistics[player["name"]].get("yellow_cards", 0),
+            "Red Cards": statistics[player["name"]].get("red_cards", 0),
         }
         for player in squad
     ]
