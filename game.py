@@ -109,6 +109,7 @@ def simulate_gameweek(
     first_half_result=None,
     processed_discipline_gameweeks=None,
     processed_morale_gameweeks=None,
+    career_squads=None,
 ):
     """Play all ten matches in a gameweek and update the table once."""
     if gameweek_number in completed_gameweeks:
@@ -132,7 +133,7 @@ def simulate_gameweek(
             strengths[club] = (
                 user_strength
                 if club == user_club
-                else calculate_team_strength(get_best_starting_xi(club))
+                else calculate_team_strength(get_best_starting_xi(club, career_squads))
             )
 
     results = []
@@ -168,15 +169,18 @@ def simulate_gameweek(
                     home_style, away_style, rng=rng,
                 )
             second = simulate_half(home_strength, away_strength, home_style, away_style, rng)
-            match = simulate_match(fixture["home"], fixture["away"], home_strength, away_strength, rng)
-            match.update({
+            # Do not simulate and discard another full match here: doing so
+            # consumed four needless random score draws in staged matches.
+            match = {
+                "home_club": fixture["home"], "away_club": fixture["away"],
+                "user_club": fixture["home"], "opponent": fixture["away"],
                 "first_half_home_score": first_half_result["home_score"],
                 "first_half_away_score": first_half_result["away_score"],
                 "second_half_home_score": second["home_score"],
                 "second_half_away_score": second["away_score"],
                 "home_score": first_half_result["home_score"] + second["home_score"],
                 "away_score": first_half_result["away_score"] + second["away_score"],
-            })
+            }
             if match["home_score"] > match["away_score"]:
                 match.update(winner=match["home_club"], result=f"{match['home_club']} win")
             elif match["away_score"] > match["home_score"]:

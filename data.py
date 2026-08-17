@@ -188,6 +188,13 @@ def calculate_team_strength(starting_xi):
     return round(total_rating / 11, 1)
 
 
-def get_best_starting_xi(club):
-    """Return a club's 11 highest-rated players."""
-    return sorted(SQUADS[club], key=lambda player: player["overall"], reverse=True)[:11]
+def get_best_starting_xi(club, squads=None):
+    """Return a club's best current XI from static or mutable career squads."""
+    source = (squads or SQUADS)[club]
+    available = [
+        player for player in source
+        if not player.get("injured", False)
+        and player.get("suspension_matches", 0) <= 0
+    ]
+    pool = available if len(available) >= 11 else source
+    return sorted(pool, key=lambda player: player["overall"], reverse=True)[:11]

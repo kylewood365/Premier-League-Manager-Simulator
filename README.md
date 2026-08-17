@@ -1,8 +1,26 @@
 # Premier League Manager Simulator
 
-A beginner-friendly Streamlit football management game. Pick one of 20 Premier
-League clubs, select a starting XI, and play through a complete 38-gameweek
-double round-robin season.
+A beginner-friendly, fictional Premier League management simulator. Pick one
+of 20 fictional squads and build a persistent career across complete
+38-gameweek double round-robin seasons.
+
+## Features
+
+- Staged matchdays with formations, tactics, benches and substitutions
+- Goalscorers, cards, suspensions, injuries, fitness, morale and form
+- Possession, shots, expected goals (xG), fixtures, tables and player statistics
+- Transfers, AI offers, free agents, contracts, wages and scouting
+- Squad roles, development, aging, retirements and unique youth replacements
+- Persistent dashboards and multi-season career history
+
+## How to play
+
+1. Start a career by choosing a club.
+2. Check the Dashboard for your next fixture, finances and squad status.
+3. Pick your Starting XI, bench, formation and tactics.
+4. Play the gameweek, make half-time changes, and review the results.
+5. Manage your squad, transfers, contracts and scouting between matches.
+6. Complete seasons and develop your squad over a multi-season career.
 
 ## Run the game
 
@@ -18,5 +36,5 @@ on to the next gameweek.
 ## Run the tests
 
 ```bash
-python -m unittest -v
+pytest -q
 ```

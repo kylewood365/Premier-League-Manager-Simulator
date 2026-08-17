@@ -7,6 +7,10 @@ from squad_management import ensure_squad_management
 
 def format_money(amount):
     """Display a whole-pound amount in a familiar football format."""
+    if abs(amount) >= 1_000_000:
+        millions = amount / 1_000_000
+        precision = 0 if millions.is_integer() else 1
+        return f"£{millions:.{precision}f}m"
     return f"£{amount:,.0f}"
 
 

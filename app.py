@@ -133,8 +133,12 @@ def render_transfer_market(active_club, career_squads, squad):
                 f"Transfer listed: **{listed}**."
             )
         confirm_sale = st.checkbox("I confirm that I want to sell this player")
+        live_match = st.session_state.get("match_phase") in {"Half-time", "Second half"}
+        if live_match:
+            st.info("Finish the match before selling a player from the matchday squad.")
         if st.button(
-            "Sell Player", disabled=player_to_sell is None or not confirm_sale
+            "Sell Player",
+            disabled=player_to_sell is None or not confirm_sale or live_match,
         ):
             success, new_budget, message = sell_player(
                 career_squads, active_club, player_to_sell,
@@ -149,8 +153,9 @@ def render_transfer_market(active_club, career_squads, squad):
 
     st.header("Free Agents")
     free_agents = st.session_state["free_agents"]
-    st.dataframe(
-        [{
+    if free_agents:
+        st.dataframe(
+            [{
             "Player": player["name"], "Position": player["position"],
             "Age": player["age"], "Overall": player["overall"],
             "Potential": visible_player_data(
@@ -164,9 +169,11 @@ def render_transfer_market(active_club, career_squads, squad):
                 st.session_state["scouting_knowledge"].get(player_id(player), 0),
                 free_agent=True,
             )["Value"],
-        } for player in free_agents],
-        hide_index=True, use_container_width=True,
-    )
+            } for player in free_agents],
+            hide_index=True, use_container_width=True,
+        )
+    else:
+        st.info("No free agents currently available.")
     free_name = st.selectbox(
         "Free agent to sign", [player["name"] for player in free_agents], index=None
     )
@@ -244,12 +251,15 @@ def render_scouting(active_club, career_squads):
         )
         st.dataframe([details], hide_index=True, use_container_width=True)
     if not reports:
-        st.write("Completed reports will appear here.")
+        st.info("No completed scout reports yet.")
 
 def render_transfer_offers(active_club, career_squads):
     """Show active negotiations and completed transfer history."""
     st.header("Transfer Offers")
     offers = st.session_state["transfer_offers"]
+    live_match = st.session_state.get("match_phase") in {"Half-time", "Second half"}
+    if live_match:
+        st.info("Finish the match before completing an outgoing transfer.")
     squad = career_squads[active_club]
     rows = []
     for offer in offers:
@@ -264,7 +274,7 @@ def render_transfer_offers(active_club, career_squads):
     if rows:
         st.dataframe(rows, hide_index=True, use_container_width=True)
     else:
-        st.write("No transfer offers have been received yet.")
+        st.info("No active transfer offers.")
 
     for offer in offers:
         if offer["status"] not in {"Pending", "Countered"}:
@@ -274,7 +284,9 @@ def render_transfer_offers(active_club, career_squads):
             continue
         st.write(f"**{offer['buying_club']}** offer {format_money(offer['offered_fee'])} for **{offer['player']}**")
         accept_col, reject_col = st.columns(2)
-        if accept_col.button("Accept", key=f"accept_offer_{offer['id']}"):
+        if accept_col.button(
+            "Accept", key=f"accept_offer_{offer['id']}", disabled=live_match
+        ):
             success, message = accept_offer(
                 offer, career_squads, active_club,
                 st.session_state["club_transfer_budgets"],
@@ -617,8 +629,14 @@ if "active_club" in st.session_state:
                 f"Only {len(available_players)} healthy players are available. "
                 "You cannot play until 11 eligible starters are available."
             )
-        formation = st.selectbox("Formation", list(FORMATIONS), key=f"formation_{gameweek}")
-        style = st.selectbox("Tactical style", TACTICAL_STYLES, key=f"style_{gameweek}")
+        formation = st.selectbox(
+            "Formation", list(FORMATIONS), key=f"formation_{gameweek}",
+            disabled=phase != "Kickoff",
+        )
+        style = st.selectbox(
+            "Tactical style", TACTICAL_STYLES, key=f"style_{gameweek}",
+            disabled=phase != "Kickoff",
+        )
         selected_names = st.multiselect(
             "Select exactly 11 players",
             [player["name"] for player in available_players],
@@ -665,10 +683,13 @@ if "active_club" in st.session_state:
                     )
                 st.session_state["first_half_result"] = first_half
                 st.session_state["kickoff_style"] = style
+                st.session_state["kickoff_formation"] = formation
                 st.session_state["match_phase"] = "Half-time"
                 st.rerun()
 
         if phase in {"Half-time", "Second half"}:
+            formation = st.session_state.get("kickoff_formation", formation)
+            style = st.session_state.get("kickoff_style", style)
             first = st.session_state["first_half_result"]
             st.info(f"Half-time: **{fixture['home']} {first['home_score']} - {first['away_score']} {fixture['away']}**")
             half_stats = first["stats"]
@@ -725,6 +746,7 @@ if "active_club" in st.session_state:
                     bench=bench,
                     substitutions=existing,
                     first_half_result=st.session_state["first_half_result"],
+                    career_squads=career_squads,
                 )
                 st.session_state["match_phase"] = "Full-time"
                 user_match = next(result for result in st.session_state["gameweek_results"]
@@ -830,6 +852,9 @@ if "active_club" in st.session_state:
                 st.session_state.pop("gameweek_results", None)
                 st.session_state["match_phase"] = "Kickoff"
                 st.session_state.pop("match_substitutions", None)
+                st.session_state.pop("first_half_result", None)
+                st.session_state.pop("kickoff_formation", None)
+                st.session_state.pop("kickoff_style", None)
                 st.rerun()
         else:
             # This block is revisited on every Streamlit rerun, so progression.py
