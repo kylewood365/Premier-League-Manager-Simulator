@@ -1,7 +1,9 @@
 from copy import deepcopy
+import random
 
 import streamlit as st
 
+from career import record_season_history, start_next_season
 from data import CLUBS, CLUB_BUDGETS, SQUADS, calculate_team_strength
 from fixtures import advance_gameweek, generate_fixtures, get_club_fixture
 from game import simulate_gameweek
@@ -94,7 +96,7 @@ def render_transfer_market(active_club, career_squads, squad):
 
 st.set_page_config(page_title="Premier League Manager Simulator", page_icon="⚽")
 st.title("Premier League Manager Simulator")
-st.write("Choose a Premier League club and guide it through a 38-gameweek season.")
+st.write("Choose a Premier League club and build a multi-season career.")
 
 if "league_table" not in st.session_state:
     st.session_state["league_table"] = create_league_table(CLUBS)
@@ -104,7 +106,7 @@ if st.button("Start Career"):
     if selected_club:
         # A new career always receives a fresh schedule and league table.
         st.session_state["active_club"] = selected_club
-        st.session_state["fixtures"] = generate_fixtures(CLUBS)
+        st.session_state["fixtures"] = generate_fixtures(CLUBS, random)
         st.session_state["current_gameweek"] = 1
         st.session_state["completed_gameweeks"] = set()
         st.session_state["league_table"] = create_league_table(CLUBS)
@@ -117,6 +119,7 @@ if st.button("Start Career"):
         st.session_state["recorded_stat_gameweeks"] = set()
         st.session_state["processed_seasons"] = set()
         st.session_state["season_number"] = 1
+        st.session_state["career_history"] = []
         st.session_state.pop("season_summary", None)
         st.session_state.pop("gameweek_results", None)
         st.success(f"Welcome to {selected_club}! Your career starts at Gameweek 1.")
@@ -131,7 +134,28 @@ if "active_club" in st.session_state:
     fixture = get_club_fixture(st.session_state["fixtures"], gameweek, active_club)
     is_complete = gameweek in st.session_state["completed_gameweeks"]
 
+    st.header(f"Season {st.session_state['season_number']}")
     st.metric("Transfer Budget", format_money(st.session_state["transfer_budget"]))
+
+    st.subheader("Career History")
+    history = st.session_state.setdefault("career_history", [])
+    if history:
+        for entry in history:
+            position = entry["user_position"]
+            suffix = (
+                "th"
+                if 10 <= position % 100 <= 20
+                else {1: "st", 2: "nd", 3: "rd"}.get(position % 10, "th")
+            )
+            st.markdown(
+                f"**Season {entry['season']}**  \n"
+                f"Champion: {entry['champion']}  \n"
+                f"Your Finish: {position}{suffix}  \n"
+                f"Top Scorer: {entry['top_scorer']} — "
+                f"{entry['top_scorer_goals']} goals"
+            )
+    else:
+        st.write("Complete a season to add it to your history.")
 
     st.header(f"Gameweek {gameweek}")
     if fixture:
@@ -162,8 +186,10 @@ if "active_club" in st.session_state:
     stat_rows = get_current_squad_statistics(
         squad, st.session_state["player_statistics"], stat_sort
     )
-    top_goals = stat_rows[0]["Goals"] if stat_rows and stat_sort == "Goals" else max(
-        (row["Goals"] for row in stat_rows), default=0
+    top_goals = (
+        stat_rows[0]["Goals"]
+        if stat_rows and stat_sort == "Goals"
+        else max((row["Goals"] for row in stat_rows), default=0)
     )
     top_scorers = [row["Player"] for row in stat_rows if row["Goals"] == top_goals]
     top_scorer_name = ", ".join(top_scorers) if top_goals else "No goals yet"
@@ -200,9 +226,7 @@ if "active_club" in st.session_state:
                     st.session_state["league_table"],
                     st.session_state["completed_gameweeks"],
                     player_statistics=st.session_state["player_statistics"],
-                    recorded_stat_gameweeks=st.session_state[
-                        "recorded_stat_gameweeks"
-                    ],
+                    recorded_stat_gameweeks=st.session_state["recorded_stat_gameweeks"],
                 )
                 st.rerun()
 
@@ -264,10 +288,19 @@ if "active_club" in st.session_state:
                 )
                 if summary is not None:
                     st.session_state["season_summary"] = summary
+                    record_season_history(
+                        st.session_state["career_history"],
+                        st.session_state["season_number"],
+                        summary,
+                    )
 
             summary = st.session_state["season_summary"]
             position = summary["user_position"]
-            suffix = "th" if 10 <= position % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(position % 10, "th")
+            suffix = (
+                "th"
+                if 10 <= position % 100 <= 20
+                else {1: "st", 2: "nd", 3: "rd"}.get(position % 10, "th")
+            )
             st.header("SEASON COMPLETE")
             st.success(f"🏆 Premier League Champions: {summary['champion']}")
             st.write(f"**Your Finish:** {position}{suffix}")
@@ -291,3 +324,7 @@ if "active_club" in st.session_state:
                 )
             else:
                 st.write("No Overall changes this season.")
+
+            if st.button("Start Next Season"):
+                start_next_season(st.session_state, CLUBS)
+                st.rerun()
