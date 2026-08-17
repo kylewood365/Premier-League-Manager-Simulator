@@ -11,6 +11,7 @@ from discipline import (
 from fitness import process_gameweek_health
 from league import update_league_table
 from morale import process_match_morale_and_form
+from squad_management import process_playing_time
 from stats import assign_goalscorers, record_match_statistics
 from tactics import apply_substitutions, tactical_strength, validate_bench, validate_starting_xi
 
@@ -118,6 +119,10 @@ def simulate_gameweek(
     substitutions = substitutions or []
     validate_bench(bench, user_starting_xi)
     second_half_xi = apply_substitutions(user_starting_xi, bench, substitutions)
+    available_at_kickoff = {
+        player["name"] for player in (user_squad or [])
+        if not player.get("injured", False) and player.get("suspension_matches", 0) <= 0
+    }
 
     user_strength = calculate_team_strength(user_starting_xi)
     strengths = {}
@@ -250,6 +255,11 @@ def simulate_gameweek(
         else:
             result = "draw"
         entered = [player for player in second_half_xi if player not in user_starting_xi]
+        request_events = process_playing_time(
+            user_squad, user_starting_xi + entered, gameweek_number, rng,
+            available_at_kickoff,
+        )
+        user_match["transfer_request_events"] = request_events
         process_match_morale_and_form(
             user_squad, user_starting_xi, entered, bench, result,
             user_match.get("goal_events", []), user_match.get("card_events", []),
