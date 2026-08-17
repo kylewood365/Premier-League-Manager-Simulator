@@ -106,6 +106,12 @@ def calculate_player_value(overall, age):
     return ability_value + age_adjustment
 
 
+def calculate_potential(overall, age):
+    """Give younger players realistic room to grow, capped at 94."""
+    growth_room = 7 if age <= 21 else 5 if age <= 24 else 3 if age <= 27 else 1
+    return min(94, overall + growth_room)
+
+
 def create_squad(surname, base_rating, rating_changes):
     """Build one easy-to-read fictional squad."""
     squad = []
@@ -116,6 +122,9 @@ def create_squad(surname, base_rating, rating_changes):
                 "position": STARTER_POSITIONS[index],
                 "age": STARTER_AGES[index],
                 "overall": base_rating + rating_changes[index],
+                "potential": calculate_potential(
+                    base_rating + rating_changes[index], STARTER_AGES[index]
+                ),
                 "value": calculate_player_value(
                     base_rating + rating_changes[index], STARTER_AGES[index]
                 ),
@@ -129,6 +138,10 @@ def create_squad(surname, base_rating, rating_changes):
                 "position": SUBSTITUTE_POSITIONS[index],
                 "age": SUBSTITUTE_AGES[index],
                 "overall": base_rating + SUBSTITUTE_RATING_CHANGES[index],
+                "potential": calculate_potential(
+                    base_rating + SUBSTITUTE_RATING_CHANGES[index],
+                    SUBSTITUTE_AGES[index],
+                ),
                 "value": calculate_player_value(
                     base_rating + SUBSTITUTE_RATING_CHANGES[index],
                     SUBSTITUTE_AGES[index],
