@@ -28,10 +28,16 @@ def is_available(player):
 
 
 def effective_rating(player):
-    """Scale Overall from 50% at zero Fitness to 100% when fully fit."""
+    """Apply dominant Fitness and small morale/recent-form modifiers."""
     ensure_player_health(player)
+    from morale import ensure_player_morale_form, form_score
+    ensure_player_morale_form(player)
     fitness_multiplier = 0.5 + player["fitness"] / 200
-    return player["overall"] * fitness_multiplier
+    # Each soft factor is capped at roughly two percent of Overall.
+    morale_multiplier = 1 + max(-0.02, min(0.02, (player["morale"] - 75) / 1250))
+    score = form_score(player)
+    form_multiplier = 1 if score is None else 1 + max(-0.02, min(0.02, (score - 6.8) / 40))
+    return player["overall"] * fitness_multiplier * form_multiplier * morale_multiplier
 
 
 def injury_chance(player):

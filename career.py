@@ -6,6 +6,7 @@ from discipline import reset_discipline_for_new_season
 from fixtures import generate_fixtures
 from fitness import reset_health_for_new_season
 from league import create_league_table
+from morale import reset_morale_form_for_new_season
 from stats import reset_player_statistics
 
 
@@ -40,8 +41,10 @@ def start_next_season(state, clubs, rng=None):
     state["recorded_stat_gameweeks"] = set()
     state["processed_health_gameweeks"] = set()
     state["processed_discipline_gameweeks"] = set()
+    state["processed_morale_gameweeks"] = set()
     reset_health_for_new_season(state["career_squads"][state["active_club"]])
     reset_discipline_for_new_season(state["career_squads"][state["active_club"]])
+    reset_morale_form_for_new_season(state["career_squads"][state["active_club"]])
     state["player_statistics"] = reset_player_statistics(
         state["career_squads"][state["active_club"]]
     )
