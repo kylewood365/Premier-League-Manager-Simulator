@@ -13,6 +13,10 @@ from game import simulate_gameweek, simulate_half
 from league import create_league_table, get_sorted_league_table
 from morale import ensure_player_morale_form, form_label, form_score, morale_label
 from progression import process_end_of_season
+from scouting import (
+    KNOWLEDGE_NAMES, assign_scout, initialise_scouting, knowledge_level,
+    player_id, process_scouting, visible_player_data,
+)
 from stats import create_player_statistics, get_current_squad_statistics
 from squad_management import (
     SQUAD_ROLES, accept_transfer_request, assign_default_roles, change_squad_role,
@@ -50,19 +54,17 @@ def render_transfer_market(active_club, career_squads, squad):
             if position_filter == "All" or player["position"] == position_filter
             if club_filter == "All" or club == club_filter
         ]
+        knowledge = st.session_state["scouting_knowledge"]
         st.dataframe(
-            [
-                {
-                    "Player": player["name"],
-                    "Club": club,
-                    "Position": player["position"],
-                    "Age": player["age"],
-                    "Overall": player["overall"],
-                    "Transfer Value": format_money(player["value"]),
-                    "Transfer Listed": "Yes" if player.get("transfer_listed") else "No",
-                }
-                for club, player in market_players
-            ],
+            [dict(
+                visible_player_data(
+                    player, knowledge_level(player, club, active_club, knowledge)
+                ),
+                Club=club,
+                Knowledge=KNOWLEDGE_NAMES[knowledge_level(
+                    player, club, active_club, knowledge
+                )],
+            ) for club, player in market_players],
             hide_index=True,
             use_container_width=True,
         )
@@ -81,6 +83,7 @@ def render_transfer_market(active_club, career_squads, squad):
                 st.session_state["transfer_history"],
                 st.session_state["season_number"],
                 st.session_state["club_transfer_budgets"],
+                st.session_state["scouting_knowledge"],
             )
             if success:
                 st.session_state["transfer_budget"] = new_budget
@@ -111,30 +114,6 @@ def render_transfer_market(active_club, career_squads, squad):
         )
         (st.success if success else st.warning)(message)
 
-    st.header("Free Agents")
-    free_agents = st.session_state["free_agents"]
-    st.dataframe(
-        [{
-            "Player": player["name"], "Position": player["position"],
-            "Age": player["age"], "Overall": player["overall"],
-            "Potential": player["potential"],
-            "Wage Expectation": f"{format_money(player['wage'])}/week",
-            "Value": format_money(player["value"]),
-        } for player in free_agents],
-        hide_index=True, use_container_width=True,
-    )
-    free_name = st.selectbox(
-        "Free agent to sign", [player["name"] for player in free_agents], index=None
-    )
-    free_contract = st.selectbox("New contract length", [1, 2, 3, 4, 5])
-    if st.button("Sign Free Agent", disabled=free_name is None):
-        success, message = sign_free_agent(
-            career_squads, active_club, free_agents, free_name,
-            free_contract, CLUB_WAGE_BUDGETS[active_club],
-            st.session_state["transfer_history"], st.session_state["season_number"],
-        )
-        (st.success if success else st.warning)(message)
-
     with sell_tab:
         player_to_sell = st.selectbox(
             "Player to sell", [player["name"] for player in squad], index=None
@@ -153,11 +132,8 @@ def render_transfer_market(active_club, career_squads, squad):
             "Sell Player", disabled=player_to_sell is None or not confirm_sale
         ):
             success, new_budget, message = sell_player(
-                career_squads,
-                active_club,
-                player_to_sell,
-                st.session_state["transfer_budget"],
-                st.session_state["transfer_pool"],
+                career_squads, active_club, player_to_sell,
+                st.session_state["transfer_budget"], st.session_state["transfer_pool"],
             )
             if success:
                 st.session_state["transfer_budget"] = new_budget
@@ -165,6 +141,105 @@ def render_transfer_market(active_club, career_squads, squad):
                 st.success(message)
             else:
                 st.warning(message)
+
+    st.header("Free Agents")
+    free_agents = st.session_state["free_agents"]
+    st.dataframe(
+        [{
+            "Player": player["name"], "Position": player["position"],
+            "Age": player["age"], "Overall": player["overall"],
+            "Potential": visible_player_data(
+                player,
+                st.session_state["scouting_knowledge"].get(player_id(player), 0),
+                free_agent=True,
+            )["Potential"],
+            "Wage Expectation": f"{format_money(player['wage'])}/week",
+            "Value": visible_player_data(
+                player,
+                st.session_state["scouting_knowledge"].get(player_id(player), 0),
+                free_agent=True,
+            )["Value"],
+        } for player in free_agents],
+        hide_index=True, use_container_width=True,
+    )
+    free_name = st.selectbox(
+        "Free agent to sign", [player["name"] for player in free_agents], index=None
+    )
+    free_contract = st.selectbox("New contract length", [1, 2, 3, 4, 5])
+    if st.button("Sign Free Agent", disabled=free_name is None):
+        success, message = sign_free_agent(
+            career_squads, active_club, free_agents, free_name,
+            free_contract, CLUB_WAGE_BUDGETS[active_club],
+            st.session_state["transfer_history"], st.session_state["season_number"],
+            st.session_state["scouting_knowledge"],
+        )
+        (st.success if success else st.warning)(message)
+
+
+def render_scouting(active_club, career_squads):
+    """Show compact assignment controls and persistent completed reports."""
+    st.header("Scouting")
+    knowledge = st.session_state["scouting_knowledge"]
+    assignments = st.session_state["scouting_assignments"]
+    reports = st.session_state["scout_reports"]
+    candidates = [
+        (club, player) for club, squad in career_squads.items() if club != active_club
+        for player in squad
+    ] + [("Free Agent", player) for player in st.session_state["free_agents"]]
+    club_filter = st.selectbox(
+        "Scouting club", ["All"] + sorted({club for club, _ in candidates})
+    )
+    position_filter = st.selectbox(
+        "Scouting position", ["All"] + sorted({p["position"] for _, p in candidates})
+    )
+    level_filter = st.selectbox("Knowledge level", ["All"] + KNOWLEDGE_NAMES)
+    filtered = [
+        (club, player) for club, player in candidates
+        if club_filter == "All" or club == club_filter
+        if position_filter == "All" or player["position"] == position_filter
+        if level_filter == "All" or KNOWLEDGE_NAMES[
+            knowledge.get(player_id(player), 0)
+        ] == level_filter
+    ]
+    choices = {f"{p['name']} — {club} ({p['position']})": (club, p)
+               for club, p in filtered if knowledge.get(player_id(p), 0) < 3}
+    choice = st.selectbox("Player to scout", list(choices), index=None)
+    if st.button("Assign Scout", disabled=choice is None):
+        club, player = choices[choice]
+        success, message = assign_scout(
+            player, club, active_club, knowledge, assignments,
+            st.session_state["season_number"], st.session_state["current_gameweek"],
+        )
+        (st.success if success else st.warning)(message)
+
+    st.subheader(f"Active Assignments ({len(assignments)} / 3)")
+    if assignments:
+        st.dataframe([{
+            "Player": a["player_name"], "Club": a["club"],
+            "Status": "In Progress", "Completion": "After next league gameweek",
+        } for a in assignments], hide_index=True, use_container_width=True)
+    else:
+        st.write("No active scouting assignments.")
+
+    st.subheader("Scout Reports")
+    players = {player_id(p): (club, p) for club, squad in career_squads.items()
+               for p in squad}
+    players.update({player_id(p): ("Free Agent", p)
+                    for p in st.session_state["free_agents"]})
+    for report in reversed(reports):
+        found = players.get(report["player_id"])
+        if not found:
+            continue
+        club, player = found
+        details = visible_player_data(player, report["knowledge_level"], club == "Free Agent")
+        st.markdown(f"**{player['name']} — {club}**  ")
+        st.caption(
+            f"Season {report['season']}, Gameweek {report['gameweek_completed']} · "
+            f"Knowledge: {KNOWLEDGE_NAMES[report['knowledge_level']]}"
+        )
+        st.dataframe([details], hide_index=True, use_container_width=True)
+    if not reports:
+        st.write("Completed reports will appear here.")
 
 def render_transfer_offers(active_club, career_squads):
     """Show active negotiations and completed transfer history."""
@@ -273,6 +348,12 @@ if st.button("Start Career"):
         st.session_state["season_number"] = 1
         st.session_state["career_history"] = []
         st.session_state["retirement_history"] = []
+        st.session_state["scouting_knowledge"] = initialise_scouting(
+            st.session_state["career_squads"], selected_club
+        )
+        st.session_state["scouting_assignments"] = []
+        st.session_state["scout_reports"] = []
+        st.session_state["processed_scouting_gameweeks"] = set()
         st.session_state.pop("season_summary", None)
         st.session_state.pop("gameweek_results", None)
         st.session_state["match_phase"] = "Kickoff"
@@ -529,8 +610,22 @@ if "active_club" in st.session_state:
     if not is_complete:
         render_transfer_market(active_club, career_squads, squad)
         render_transfer_offers(active_club, career_squads)
+        render_scouting(active_club, career_squads)
 
     if is_complete:
+        completed_reports = process_scouting(
+            st.session_state["scouting_assignments"],
+            st.session_state["scouting_knowledge"],
+            st.session_state["scout_reports"], career_squads,
+            st.session_state["season_number"], gameweek,
+            st.session_state["processed_scouting_gameweeks"],
+            st.session_state["free_agents"],
+        )
+        for report in completed_reports:
+            st.success(
+                f"Scout Report Complete: {report['player_name']} — "
+                f"{KNOWLEDGE_NAMES[report['knowledge_level']]}"
+            )
         new_offers = generate_ai_offers(
             career_squads, active_club,
             st.session_state["club_transfer_budgets"],
@@ -545,6 +640,7 @@ if "active_club" in st.session_state:
             )
         render_transfer_market(active_club, career_squads, squad)
         render_transfer_offers(active_club, career_squads)
+        render_scouting(active_club, career_squads)
         st.subheader(f"Gameweek {gameweek} Results")
         for result in st.session_state["gameweek_results"]:
             scoreline = (

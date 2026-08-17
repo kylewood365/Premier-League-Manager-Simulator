@@ -122,7 +122,7 @@ def calculate_potential(overall, age):
     return min(94, overall + growth_room)
 
 
-def create_squad(surname, base_rating, rating_changes):
+def create_squad(surname, base_rating, rating_changes, club="club"):
     """Build one easy-to-read fictional squad."""
     squad = []
     for index in range(11):
@@ -130,6 +130,7 @@ def create_squad(surname, base_rating, rating_changes):
         potential = calculate_potential(overall, STARTER_AGES[index])
         squad.append(
             ensure_player_morale_form({
+                "id": f"{club.lower().replace(' ', '-')}-{index + 1}",
                 "name": f"{FIRST_NAMES[index]} {surname}",
                 "position": STARTER_POSITIONS[index],
                 "age": STARTER_AGES[index],
@@ -151,6 +152,7 @@ def create_squad(surname, base_rating, rating_changes):
         potential = calculate_potential(overall, SUBSTITUTE_AGES[index])
         squad.append(
             ensure_player_morale_form({
+                "id": f"{club.lower().replace(' ', '-')}-{index + 12}",
                 "name": f"{SUBSTITUTE_FIRST_NAMES[index]} {surname}",
                 "position": SUBSTITUTE_POSITIONS[index],
                 "age": SUBSTITUTE_AGES[index],
@@ -172,7 +174,7 @@ def create_squad(surname, base_rating, rating_changes):
 
 # SQUADS maps every selectable club to its full squad.
 SQUADS = {
-    club: create_squad(surname, base_rating, rating_changes)
+    club: create_squad(surname, base_rating, rating_changes, club)
     for club, (surname, base_rating, rating_changes) in CLUB_DETAILS.items()
 }
 
