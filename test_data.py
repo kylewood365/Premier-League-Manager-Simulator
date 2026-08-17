@@ -2,10 +2,29 @@
 
 import unittest
 
-from data import CLUBS, SQUADS, calculate_team_strength, get_best_starting_xi
+from data import (
+    CLUBS,
+    CLUB_BUDGETS,
+    CLUB_WAGE_BUDGETS,
+    SQUADS,
+    calculate_team_strength,
+    get_best_starting_xi,
+)
 
 
 class SquadDataTests(unittest.TestCase):
+    def test_club_list_matches_the_2026_27_premier_league(self):
+        self.assertEqual(len(CLUBS), 20)
+        self.assertEqual(CLUBS, sorted(CLUBS))
+        for club in ("Coventry City", "Hull City", "Ipswich Town"):
+            self.assertIn(club, CLUBS)
+        for club in ("Burnley", "West Ham United", "Wolverhampton Wanderers"):
+            self.assertNotIn(club, CLUBS)
+
+    def test_every_club_has_transfer_and_wage_budgets(self):
+        self.assertEqual(set(CLUB_BUDGETS), set(CLUBS))
+        self.assertEqual(set(CLUB_WAGE_BUDGETS), set(CLUBS))
+
     def test_every_club_has_enough_players_to_choose_an_xi(self):
         self.assertEqual(set(CLUBS), set(SQUADS))
         for squad in SQUADS.values():
