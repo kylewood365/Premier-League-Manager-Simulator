@@ -10,6 +10,7 @@ from discipline import (
 )
 from fitness import process_gameweek_health
 from league import update_league_table
+from match_stats import combine_half_statistics, generate_half_statistics
 from morale import process_match_morale_and_form
 from squad_management import process_playing_time
 from stats import assign_goalscorers, record_match_statistics
@@ -160,6 +161,12 @@ def simulate_gameweek(
                     strengths[fixture["home"]], strengths[fixture["away"]],
                     home_style, away_style, rng,
                 )
+            if "stats" not in first_half_result:
+                first_half_result["stats"] = generate_half_statistics(
+                    strengths[fixture["home"]], strengths[fixture["away"]],
+                    first_half_result["home_score"], first_half_result["away_score"],
+                    home_style, away_style, rng=rng,
+                )
             second = simulate_half(home_strength, away_strength, home_style, away_style, rng)
             match = simulate_match(fixture["home"], fixture["away"], home_strength, away_strength, rng)
             match.update({
@@ -181,6 +188,17 @@ def simulate_gameweek(
             match["card_events"] = card_events
             match["user_red_cards"] = sum(event["type"] == "red" for event in card_events)
             match["opponent_red_cards"] = opponent_first_half_reds
+            home_reds = match["user_red_cards"] if fixture["home"] == user_club else opponent_first_half_reds
+            away_reds = match["user_red_cards"] if fixture["away"] == user_club else opponent_first_half_reds
+            second_stats = generate_half_statistics(
+                home_strength, away_strength, second["home_score"], second["away_score"],
+                home_style, away_style, home_reds, away_reds, rng,
+            )
+            match["first_half_stats"] = first_half_result["stats"]
+            match["second_half_stats"] = second_stats
+            match["match_stats"] = combine_half_statistics(
+                match["first_half_stats"], second_stats
+            )
         else:
             home_style = tactical_style if fixture["home"] == user_club else "Balanced"
             away_style = tactical_style if fixture["away"] == user_club else "Balanced"
