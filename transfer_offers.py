@@ -141,6 +141,7 @@ def accept_offer(offer, squads, user_club, club_budgets, transfer_history,
         offer["status"] = "Withdrawn"
         return False, "The buying club can no longer complete this transfer."
     squads[user_club].remove(player)
+    player["club"] = club
     player["transfer_requested"] = False
     player["transfer_listed"] = False
     player["playing_time_promise"] = None

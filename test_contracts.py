@@ -26,6 +26,7 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(events[0]["type"], "expired")
         self.assertNotIn(player, squads["Arsenal"])
         self.assertIn(player, free_agents)
+        self.assertIsNone(player["club"])
         self.assertIsNone(process_contracts(squads, free_agents, 1, processed))
         self.assertEqual(len(free_agents), 1)
 
@@ -63,6 +64,7 @@ class ContractTests(unittest.TestCase):
         free_agents = [player]
         budget = calculate_wage_spend(squads["Arsenal"]) + player["wage"]
         self.assertTrue(sign_free_agent(squads, "Arsenal", free_agents, player["name"], 3, budget)[0])
+        self.assertEqual(player["club"], "Arsenal")
         self.assertFalse(sign_free_agent(squads, "Arsenal", free_agents, player["name"], 3, budget)[0])
 
     def test_youth_has_contract_and_retiree_never_becomes_free_agent(self):

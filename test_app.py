@@ -39,6 +39,12 @@ class StreamlitFlowTests(unittest.TestCase):
         app.button[-1].click().run()
         self.assertEqual(app.session_state["current_gameweek"], 2)
 
+    def test_database_selector_starts_offline_with_fictional_squads(self):
+        app = AppTest.from_file("app.py").run()
+        self.assertEqual(app.radio[0].label, "Career Database")
+        app.radio[0].set_value("Fictional Squads").run()
+        self.assertIn("Arsenal", app.selectbox[0].options)
+
 
 if __name__ == "__main__":
     unittest.main()

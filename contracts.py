@@ -79,6 +79,7 @@ def process_contracts(squads, free_agents, season, processed_seasons):
                     youth = generate_youth_player(
                         player["position"], (member["name"] for member in squad)
                     )
+                    youth["club"] = club
                     squad.append(youth)
                     event["youth"] = youth
                 events.append(event)
