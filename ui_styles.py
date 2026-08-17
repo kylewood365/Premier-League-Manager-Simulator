@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ASSET_DIRECTORY = Path(__file__).resolve().parent / "assets"
-STADIUM_BACKGROUND = ASSET_DIRECTORY / "stadium-background.jpg"
+STADIUM_BACKGROUND = ASSET_DIRECTORY / "stadium-background.png"
 
 
 @lru_cache(maxsize=1)

@@ -36,10 +36,10 @@ on to the next gameweek.
 ## Custom Visual Assets
 
 The interface uses a dark stadium-inspired gradient by default. To use your own
-stadium atmosphere, place a JPEG image at:
+stadium atmosphere, place a PNG image at:
 
 ```text
-assets/stadium-background.jpg
+assets/stadium-background.png
 ```
 
 The image is centred, covers the viewport, and receives a dark readability
