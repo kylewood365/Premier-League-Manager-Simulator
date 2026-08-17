@@ -39,13 +39,30 @@ def statistical_style(style):
 
 POSITION_GROUPS = {
     "GK": {"GK"},
-    "CB": {"CB"},
-    "DEF": {"RB", "LB", "CB"},
-    "MID": {"CM", "CAM", "LW", "RW", "LB", "RB"},
-    "AM": {"CAM", "LW", "RW", "CM"},
-    "ST": {"ST"},
-    "FWD": {"ST", "LW", "RW", "CAM"},
+    "CB": {"CB", "DEF"},
+    "DEF": {"RB", "LB", "CB", "DEF"},
+    "MID": {"CM", "CAM", "LW", "RW", "LB", "RB", "MID"},
+    "AM": {"CAM", "LW", "RW", "CM", "MID", "FWD"},
+    "ST": {"ST", "FWD"},
+    "FWD": {"ST", "LW", "RW", "CAM", "FWD"},
 }
+
+
+def can_field_formation(players, formation):
+    """Return whether a squad can fill a formation, including broad API roles."""
+    if formation not in FORMATIONS:
+        return False
+
+    def fills(slot_index, remaining):
+        if slot_index == len(FORMATIONS[formation]):
+            return True
+        allowed = POSITION_GROUPS[FORMATIONS[formation][slot_index]]
+        return any(
+            player.get("position") in allowed
+            and fills(slot_index + 1, remaining[:index] + remaining[index + 1:])
+            for index, player in enumerate(remaining)
+        )
+    return fills(0, list(players))
 
 
 def validate_starting_xi(players, formation):
@@ -60,17 +77,7 @@ def validate_starting_xi(players, formation):
         raise ValueError("Suspended players cannot be selected in the starting XI.")
 
     # Backtracking avoids rejecting versatile combinations based on slot order.
-    def fills(slot_index, remaining):
-        if slot_index == len(FORMATIONS[formation]):
-            return True
-        allowed = POSITION_GROUPS[FORMATIONS[formation][slot_index]]
-        return any(
-            player["position"] in allowed
-            and fills(slot_index + 1, remaining[:index] + remaining[index + 1 :])
-            for index, player in enumerate(remaining)
-        )
-
-    if not fills(0, list(players)):
+    if not can_field_formation(players, formation):
         raise ValueError(f"The selected players do not fit a {formation} formation.")
     return True
 

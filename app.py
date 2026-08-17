@@ -5,8 +5,9 @@ import random
 import streamlit as st
 
 from career import record_season_history, start_next_season
+from budgets import career_budget_mappings
 from contracts import calculate_wage_spend, renew_contract, requested_weekly_wage
-from data import CLUBS, CLUB_BUDGETS, CLUB_WAGE_BUDGETS, SQUADS, calculate_team_strength
+from data import CLUBS, SQUADS, calculate_team_strength
 from discipline import availability_status
 from fixtures import advance_gameweek, generate_fixtures, get_club_fixture
 from fitness import is_available
@@ -40,15 +41,18 @@ from dashboard import NAVIGATION, initialise_navigation, render_dashboard
 from ui_styles import apply_global_styles
 from real_world_data import (
     RealWorldDataError, get_current_squad, get_premier_league_player_statistics,
-    get_premier_league_teams, join_squad_statistics,
+    get_premier_league_teams, is_api_configured, join_squad_statistics,
 )
 from player_ratings import create_simulator_player
+from real_career import REAL_DATA_SEASON, build_real_career_squads
 
 
 def render_real_world_data():
     """Show a read-only API preview; never alter the fictional career state."""
     st.header("Real World Data")
     st.caption("Current 2026 Premier League clubs and registered squads from API-Football.")
+    if st.session_state.get("career_source") == "real":
+        st.info("Real World Data is a live/cached preview. Your active career uses the snapshot taken when it began.")
     try:
         teams = get_premier_league_teams()
         st.subheader("Current Premier League clubs")
@@ -106,15 +110,15 @@ def render_transfer_market(active_club, career_squads, squad):
 
     with buy_tab:
         position_options = sorted(
-            {player["position"] for club in CLUBS for player in career_squads[club]}
+            {player["position"] for club in career_squads for player in career_squads[club]}
         )
         position_filter = st.selectbox("Position", ["All"] + position_options)
         club_filter = st.selectbox(
-            "Club", ["All"] + [club for club in CLUBS if club != active_club]
+            "Club", ["All"] + [club for club in career_squads if club != active_club]
         )
         market_players = [
             (club, player)
-            for club in CLUBS
+            for club in career_squads
             if club != active_club
             for player in career_squads[club]
             if position_filter == "All" or player["position"] == position_filter
@@ -145,7 +149,7 @@ def render_transfer_market(active_club, career_squads, squad):
                 active_club,
                 player_to_buy,
                 st.session_state["transfer_budget"],
-                CLUB_WAGE_BUDGETS[active_club],
+                st.session_state["club_wage_budgets"][active_club],
                 st.session_state["transfer_history"],
                 st.session_state["season_number"],
                 st.session_state["club_transfer_budgets"],
@@ -176,7 +180,8 @@ def render_transfer_market(active_club, career_squads, squad):
         )
     if st.button("Renew Contract", disabled=contract_player is None):
         success, message = renew_contract(
-            contract_player, extension, squad, CLUB_WAGE_BUDGETS[active_club]
+            contract_player, extension, squad,
+            st.session_state["club_wage_budgets"][active_club]
         )
         (st.success if success else st.warning)(message)
 
@@ -242,7 +247,7 @@ def render_transfer_market(active_club, career_squads, squad):
     if st.button("Sign Free Agent", disabled=free_name is None):
         success, message = sign_free_agent(
             career_squads, active_club, free_agents, free_name,
-            free_contract, CLUB_WAGE_BUDGETS[active_club],
+            free_contract, st.session_state["club_wage_budgets"][active_club],
             st.session_state["transfer_history"], st.session_state["season_number"],
             st.session_state["scouting_knowledge"],
         )
@@ -404,52 +409,69 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-if "league_table" not in st.session_state:
-    st.session_state["league_table"] = create_league_table(CLUBS)
-
 selected_club = None
 if "active_club" not in st.session_state:
-    selected_club = st.selectbox("Choose your club", CLUBS, index=None)
+    database_label = st.radio(
+        "Career Database",
+        ["Real Premier League Squads", "Fictional Squads"],
+        index=0 if is_api_configured() else 1,
+    )
+    source = "real" if database_label.startswith("Real") else "fictional"
+    selectable_clubs = CLUBS
+    if source == "real":
+        st.caption(
+            "Real Squads creates a snapshot of current API-Football squad data when "
+            "your career begins. After kickoff, transfers, development, contracts, "
+            "injuries and retirements belong to your simulated career and are not "
+            "overwritten by real-world updates."
+        )
+        try:
+            selectable_clubs = [team["name"] for team in get_premier_league_teams()]
+        except RealWorldDataError as exc:
+            selectable_clubs = []
+            st.warning(str(exc))
+            st.info("Retry, or choose Fictional Squads to play without the API.")
+    selected_club = st.selectbox("Choose your club", selectable_clubs, index=None)
 if "active_club" not in st.session_state and st.button("Start Career"):
     if selected_club:
-        # A new career always receives a fresh schedule and league table.
-        st.session_state["active_club"] = selected_club
-        st.session_state["fixtures"] = generate_fixtures(CLUBS, random)
-        st.session_state["current_gameweek"] = 1
-        st.session_state["completed_gameweeks"] = set()
-        st.session_state["league_table"] = create_league_table(CLUBS)
-        st.session_state["career_squads"] = deepcopy(SQUADS)
-        assign_default_roles(st.session_state["career_squads"][selected_club])
-        st.session_state["transfer_budget"] = CLUB_BUDGETS[selected_club]
-        st.session_state["club_transfer_budgets"] = dict(CLUB_BUDGETS)
-        st.session_state["transfer_offers"] = []
-        st.session_state["processed_offer_gameweeks"] = set()
-        st.session_state["transfer_history"] = []
-        st.session_state["transfer_pool"] = []
-        st.session_state["free_agents"] = []
-        st.session_state["player_statistics"] = create_player_statistics(
-            st.session_state["career_squads"][selected_club]
-        )
-        st.session_state["recorded_stat_gameweeks"] = set()
-        st.session_state["processed_health_gameweeks"] = set()
-        st.session_state["processed_discipline_gameweeks"] = set()
-        st.session_state["processed_morale_gameweeks"] = set()
-        st.session_state["processed_seasons"] = set()
-        st.session_state["season_number"] = 1
-        st.session_state["career_history"] = []
-        st.session_state["match_history"] = []
-        st.session_state["retirement_history"] = []
-        st.session_state["scouting_knowledge"] = initialise_scouting(
-            st.session_state["career_squads"], selected_club
-        )
-        st.session_state["scouting_assignments"] = []
-        st.session_state["scout_reports"] = []
-        st.session_state["processed_scouting_gameweeks"] = set()
-        st.session_state.pop("season_summary", None)
-        st.session_state.pop("gameweek_results", None)
-        st.session_state["match_phase"] = "Kickoff"
-        st.session_state["navigation"] = "Dashboard"
-        st.success(f"Welcome to {selected_club}! Your career starts at Gameweek 1.")
+        try:
+            with st.spinner("Preparing real Premier League squads..." if source == "real" else "Preparing fictional squads..."):
+                # Everything is prepared locally; session state changes only after success.
+                squads = build_real_career_squads() if source == "real" else deepcopy(SQUADS)
+                clubs = list(squads) if source == "real" else list(CLUBS)
+                if selected_club not in squads:
+                    raise RealWorldDataError("The selected club is no longer in the returned league snapshot.")
+                fixtures = generate_fixtures(clubs, random)
+                table = create_league_table(clubs)
+                transfer_budgets, wage_budgets = career_budget_mappings(squads)
+                assign_default_roles(squads[selected_club])
+                new_state = {
+                    "active_club": selected_club, "career_source": source,
+                    "career_clubs": clubs, "fixtures": fixtures,
+                    "league_table": table, "career_squads": squads,
+                    "current_gameweek": 1, "completed_gameweeks": set(),
+                    "transfer_budget": transfer_budgets[selected_club],
+                    "club_transfer_budgets": transfer_budgets,
+                    "club_wage_budgets": wage_budgets,
+                    "transfer_offers": [], "processed_offer_gameweeks": set(),
+                    "transfer_history": [], "transfer_pool": [], "free_agents": [],
+                    "player_statistics": create_player_statistics(squads[selected_club]),
+                    "recorded_stat_gameweeks": set(), "processed_health_gameweeks": set(),
+                    "processed_discipline_gameweeks": set(), "processed_morale_gameweeks": set(),
+                    "processed_seasons": set(), "season_number": 1, "career_history": [],
+                    "match_history": [], "retirement_history": [],
+                    "scouting_knowledge": initialise_scouting(squads, selected_club),
+                    "scouting_assignments": [], "scout_reports": [],
+                    "processed_scouting_gameweeks": set(), "match_phase": "Kickoff",
+                    "navigation": "Dashboard",
+                }
+                if source == "real":
+                    new_state["real_data_season"] = REAL_DATA_SEASON
+            st.session_state.update(new_state)
+            st.success(f"Welcome to {selected_club}! Your career starts at Gameweek 1.")
+        except RealWorldDataError as exc:
+            st.error(f"The Real Squads career could not be prepared: {exc}")
+            st.info("No career was created. Retry, or choose Fictional Squads.")
     else:
         st.warning("Please choose a club before starting your career.")
 
@@ -457,6 +479,10 @@ if "active_club" in st.session_state:
     active_club = st.session_state["active_club"]
     career_squads = st.session_state["career_squads"]
     squad = career_squads[active_club]
+    if st.session_state.get("career_source") == "real":
+        st.caption(f"Career database: Real Premier League snapshot · API season {st.session_state.get('real_data_season', REAL_DATA_SEASON)}")
+    else:
+        st.caption("Career database: Fictional squads")
     gameweek = st.session_state["current_gameweek"]
     fixture = get_club_fixture(st.session_state["fixtures"], gameweek, active_club)
     is_complete = gameweek in st.session_state["completed_gameweeks"]
@@ -473,7 +499,7 @@ if "active_club" in st.session_state:
     )
 
     if page == "Dashboard":
-        render_dashboard(st, st.session_state, CLUB_WAGE_BUDGETS[active_club], format_money)
+        render_dashboard(st, st.session_state, st.session_state["club_wage_budgets"][active_club], format_money)
         st.stop()
     if page == "Transfers":
         st.header("Transfers")
@@ -488,7 +514,8 @@ if "active_club" in st.session_state:
         st.stop()
     if page == "Contracts":
         st.header("Contracts")
-        spend, budget = calculate_wage_spend(squad), CLUB_WAGE_BUDGETS[active_club]
+        spend = calculate_wage_spend(squad)
+        budget = st.session_state["club_wage_budgets"][active_club]
         cols = st.columns(3)
         cols[0].metric("Current Wage Spend", f"{format_money(spend)}/week")
         cols[1].metric("Wage Budget", f"{format_money(budget)}/week")
@@ -547,7 +574,7 @@ if "active_club" in st.session_state:
     st.header(f"Season {st.session_state['season_number']}")
     st.metric("Transfer Budget", format_money(st.session_state["transfer_budget"]))
     wage_spend = calculate_wage_spend(squad)
-    wage_budget = CLUB_WAGE_BUDGETS[active_club]
+    wage_budget = st.session_state["club_wage_budgets"][active_club]
     wage_columns = st.columns(3)
     wage_columns[0].metric("Wage Budget", f"{format_money(wage_budget)}/week")
     wage_columns[1].metric("Current Wage Spend", f"{format_money(wage_spend)}/week")
@@ -1043,5 +1070,5 @@ if "active_club" in st.session_state:
                     )
 
             if st.button("Start Next Season"):
-                start_next_season(st.session_state, CLUBS)
+                start_next_season(st.session_state, st.session_state["career_clubs"])
                 st.rerun()
