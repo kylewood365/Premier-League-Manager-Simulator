@@ -8,6 +8,7 @@ from fitness import reset_health_for_new_season
 from league import create_league_table
 from morale import reset_morale_form_for_new_season
 from stats import reset_player_statistics
+from squad_management import reset_squad_management_for_new_season
 
 
 def record_season_history(history, season_number, summary):
@@ -45,6 +46,9 @@ def start_next_season(state, clubs, rng=None):
     reset_health_for_new_season(state["career_squads"][state["active_club"]])
     reset_discipline_for_new_season(state["career_squads"][state["active_club"]])
     reset_morale_form_for_new_season(state["career_squads"][state["active_club"]])
+    reset_squad_management_for_new_season(
+        state["career_squads"][state["active_club"]]
+    )
     state["player_statistics"] = reset_player_statistics(
         state["career_squads"][state["active_club"]]
     )

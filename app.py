@@ -14,6 +14,10 @@ from league import create_league_table, get_sorted_league_table
 from morale import ensure_player_morale_form, form_label, form_score, morale_label
 from progression import process_end_of_season
 from stats import create_player_statistics, get_current_squad_statistics
+from squad_management import (
+    SQUAD_ROLES, accept_transfer_request, assign_default_roles, change_squad_role,
+    ensure_squad_management, promise_more_playing_time, satisfaction_label,
+)
 from transfer import buy_player, format_money, sell_player, sign_free_agent
 from tactics import (
     FORMATIONS, TACTICAL_STYLES, apply_substitutions,
@@ -51,6 +55,7 @@ def render_transfer_market(active_club, career_squads, squad):
                     "Age": player["age"],
                     "Overall": player["overall"],
                     "Transfer Value": format_money(player["value"]),
+                    "Transfer Listed": "Yes" if player.get("transfer_listed") else "No",
                 }
                 for club, player in market_players
             ],
@@ -86,6 +91,7 @@ def render_transfer_market(active_club, career_squads, squad):
     extension = st.selectbox("Contract extension", [1, 2, 3, 4])
     if contract_player:
         st.write(
+            f"Squad Role: **{ensure_squad_management(contract_player)['squad_role']}**. "
             f"Current: **{contract_player['contract_years']} year(s)** at "
             f"**{format_money(contract_player['wage'])}/week**. Requested wage: "
             f"**{format_money(requested_weekly_wage(contract_player))}/week**."
@@ -127,7 +133,11 @@ def render_transfer_market(active_club, career_squads, squad):
             (player for player in squad if player["name"] == player_to_sell), None
         )
         if selected_sale:
-            st.write(f"Sale value: **{format_money(selected_sale['value'])}**")
+            listed = "Yes" if selected_sale.get("transfer_listed") else "No"
+            st.write(
+                f"Sale value: **{format_money(selected_sale['value'])}**. "
+                f"Transfer listed: **{listed}**."
+            )
         confirm_sale = st.checkbox("I confirm that I want to sell this player")
         if st.button(
             "Sell Player", disabled=player_to_sell is None or not confirm_sale
@@ -163,6 +173,7 @@ if st.button("Start Career"):
         st.session_state["completed_gameweeks"] = set()
         st.session_state["league_table"] = create_league_table(CLUBS)
         st.session_state["career_squads"] = deepcopy(SQUADS)
+        assign_default_roles(st.session_state["career_squads"][selected_club])
         st.session_state["transfer_budget"] = CLUB_BUDGETS[selected_club]
         st.session_state["transfer_pool"] = []
         st.session_state["free_agents"] = []
@@ -251,11 +262,15 @@ if "active_club" in st.session_state:
             "Position": player["position"],
             "Age": player["age"],
             "Overall": player["overall"],
+            "Squad Role": ensure_squad_management(player)["squad_role"],
             "Fitness": player.get("fitness", 100),
             "Morale": (
                 f"{ensure_player_morale_form(player)['morale']} "
                 f"({morale_label(player['morale'])})"
             ),
+            "Role Satisfaction": satisfaction_label(player["role_satisfaction"]),
+            "Transfer Request": "Yes" if player["transfer_requested"] else "No",
+            "Transfer Listed": "Yes" if player["transfer_listed"] else "No",
             "Form": (
                 "N/A" if form_score(player) is None
                 else f"{form_score(player):.1f} ({form_label(form_score(player))})"
@@ -268,6 +283,35 @@ if "active_club" in st.session_state:
         for player in squad
     ]
     st.dataframe(squad_table, hide_index=True, use_container_width=True)
+
+    st.subheader("Squad Management")
+    managed_name = st.selectbox(
+        "Manage player", [player["name"] for player in squad], index=None
+    )
+    managed_player = next((p for p in squad if p["name"] == managed_name), None)
+    if managed_player:
+        ensure_squad_management(managed_player, squad=squad)
+        new_role = st.selectbox(
+            "Squad Role", SQUAD_ROLES,
+            index=SQUAD_ROLES.index(managed_player["squad_role"]),
+        )
+        if st.button("Update Squad Role"):
+            change_squad_role(managed_player, new_role)
+            st.success("Squad Role updated. Satisfaction will adjust gradually.")
+        promise = managed_player.get("playing_time_promise")
+        if promise and promise["active"]:
+            st.info(
+                f"Active playing-time promise: {promise['games_elapsed']} / "
+                f"{promise['length']} league games, {promise['appearances']} appearances."
+            )
+        if managed_player["transfer_requested"]:
+            col1, col2 = st.columns(2)
+            if col1.button("Promise More Playing Time"):
+                promise_more_playing_time(managed_player)
+                st.success("A five-game playing-time promise is now active.")
+            if col2.button("Accept Transfer Request"):
+                accept_transfer_request(managed_player)
+                st.success("Player marked as transfer listed and remains selectable.")
 
     st.subheader("Player Stats")
     stat_sort = st.selectbox(
@@ -427,6 +471,11 @@ if "active_club" in st.session_state:
                     st.success(f"{player_name} has recovered and is available again.")
                 for player_name in result.get("suspension_recovery_events", []):
                     st.success(f"{player_name} has served their suspension and is available again.")
+                for event in result.get("transfer_request_events", []):
+                    st.error(
+                        f"Transfer Request\n\n{event['player']} has submitted a transfer "
+                        f"request.\n\nReason: {event['reason']}"
+                    )
             else:
                 st.write(scoreline)
 

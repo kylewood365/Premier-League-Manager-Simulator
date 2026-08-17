@@ -4,6 +4,7 @@ import random
 
 from discipline import availability_status
 from morale import ensure_player_morale_form, form_label, form_score, morale_label
+from squad_management import ensure_squad_management, satisfaction_label
 
 POSITION_SCORING_WEIGHTS = {
     "ST": 10,
@@ -83,11 +84,13 @@ def get_current_squad_statistics(squad, statistics, sort_by="Goals"):
             "Position": player["position"],
             "Age": player["age"],
             "Overall": player["overall"],
+            "Squad Role": ensure_squad_management(player)["squad_role"],
             "Fitness": player.get("fitness", 100),
             "Morale": (
                 f"{ensure_player_morale_form(player)['morale']} "
                 f"({morale_label(player['morale'])})"
             ),
+            "Role Satisfaction": satisfaction_label(player["role_satisfaction"]),
             "Form": (
                 "N/A" if form_score(player) is None
                 else f"{form_score(player):.1f} ({form_label(form_score(player))})"

@@ -9,6 +9,7 @@ import random
 from data import calculate_player_value
 from contracts import calculate_weekly_wage
 from morale import ensure_player_morale_form
+from squad_management import ensure_squad_management
 
 
 # Deliberately fictional combinations rather than names of current footballers.
@@ -52,7 +53,7 @@ def generate_youth_player(position, existing_names=(), rng=None):
     age = rng.randint(16, 19)
     overall = rng.randint(55, 72)
     potential = rng.randint(max(70, overall), 94)
-    return ensure_player_morale_form({
+    player = ensure_player_morale_form({
         "name": name,
         "position": position,
         "age": age,
@@ -65,6 +66,7 @@ def generate_youth_player(position, existing_names=(), rng=None):
         "injured": False,
         "injury_gameweeks": 0,
     }, rng)
+    return ensure_squad_management(player, role="Prospect")
 
 
 def process_retirements(
