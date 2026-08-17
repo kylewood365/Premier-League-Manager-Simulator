@@ -4,6 +4,10 @@ import math
 import random
 
 from data import calculate_team_strength, get_best_starting_xi
+from discipline import (
+    apply_discipline_events, process_suspensions, red_card_strength,
+    simulate_player_cards,
+)
 from fitness import process_gameweek_health
 from league import update_league_table
 from stats import assign_goalscorers, record_match_statistics
@@ -100,6 +104,7 @@ def simulate_gameweek(
     bench=None,
     substitutions=None,
     first_half_result=None,
+    processed_discipline_gameweeks=None,
 ):
     """Play all ten matches in a gameweek and update the table once."""
     if gameweek_number in completed_gameweeks:
@@ -127,8 +132,20 @@ def simulate_gameweek(
         is_user_match = user_club in (fixture["home"], fixture["away"])
         if is_user_match:
             second_strength = calculate_team_strength(second_half_xi)
+            card_events = simulate_player_cards(user_starting_xi, second_half_xi, rng)
+            first_half_user_reds = sum(
+                event["type"] == "red" and event["minute"] <= 45
+                for event in card_events
+            )
+            second_strength = red_card_strength(second_strength, first_half_user_reds)
+            # AI clubs only need a team-level dismissal in this first version.
+            opponent_first_half_reds = int((rng or random).random() < 0.015)
             home_strength = second_strength if fixture["home"] == user_club else strengths[fixture["home"]]
             away_strength = second_strength if fixture["away"] == user_club else strengths[fixture["away"]]
+            if fixture["home"] != user_club:
+                home_strength = red_card_strength(home_strength, opponent_first_half_reds)
+            else:
+                away_strength = red_card_strength(away_strength, opponent_first_half_reds)
             home_style = tactical_style if fixture["home"] == user_club else "Balanced"
             away_style = tactical_style if fixture["away"] == user_club else "Balanced"
             if first_half_result is None:
@@ -154,6 +171,9 @@ def simulate_gameweek(
                 match.update(winner=None, result="Draw")
             match["user_score"] = match["home_score"]
             match["opponent_score"] = match["away_score"]
+            match["card_events"] = card_events
+            match["user_red_cards"] = sum(event["type"] == "red" for event in card_events)
+            match["opponent_red_cards"] = opponent_first_half_reds
         else:
             home_style = tactical_style if fixture["home"] == user_club else "Balanced"
             away_style = tactical_style if fixture["away"] == user_club else "Balanced"
@@ -182,6 +202,7 @@ def simulate_gameweek(
                     recorded_stat_gameweeks
                     if recorded_stat_gameweeks is not None
                     else completed_gameweeks,
+                    match.get("card_events", []),
                 )
         results.append(match)
 
@@ -197,6 +218,22 @@ def simulate_gameweek(
             rng,
             substitutes=[player for player in second_half_xi if player not in user_starting_xi],
         )
+        discipline_weeks = (
+            processed_discipline_gameweeks
+            if processed_discipline_gameweeks is not None else set()
+        )
+        if gameweek_number not in discipline_weeks:
+            user_match = next(
+                match for match in results
+                if user_club in (match["home_club"], match["away_club"])
+            )
+            newly_suspended = apply_discipline_events(
+                user_squad, user_match.get("card_events", [])
+            )
+            suspension_events = process_suspensions(
+                user_squad, gameweek_number, discipline_weeks, newly_suspended
+            )
+            user_match["suspension_recovery_events"] = suspension_events["recoveries"]
     completed_gameweeks.add(gameweek_number)
     for match in results:
         if user_club in (match["home_club"], match["away_club"]):

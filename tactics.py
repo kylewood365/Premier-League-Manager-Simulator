@@ -38,6 +38,8 @@ def validate_starting_xi(players, formation):
         raise ValueError("A starting XI must contain 11 different players.")
     if any(player.get("injured", False) for player in players):
         raise ValueError("Injured players cannot be selected in the starting XI.")
+    if any(player.get("suspension_matches", 0) > 0 for player in players):
+        raise ValueError("Suspended players cannot be selected in the starting XI.")
 
     # Backtracking avoids rejecting versatile combinations based on slot order.
     def fills(slot_index, remaining):
@@ -66,6 +68,8 @@ def validate_bench(bench, starting_xi):
         raise ValueError("Bench players cannot also be in the starting XI.")
     if any(player.get("injured", False) for player in bench):
         raise ValueError("Injured players cannot be selected on the bench.")
+    if any(player.get("suspension_matches", 0) > 0 for player in bench):
+        raise ValueError("Suspended players cannot be selected on the bench.")
     return True
 
 

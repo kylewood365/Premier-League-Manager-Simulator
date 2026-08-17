@@ -22,9 +22,9 @@ def ensure_player_health(player, default_fitness=100):
 
 
 def is_available(player):
-    """Return whether a player is healthy enough to be selected."""
+    """Return whether a player is healthy and free to be selected."""
     ensure_player_health(player)
-    return not player["injured"]
+    return not player["injured"] and player.get("suspension_matches", 0) <= 0
 
 
 def effective_rating(player):
