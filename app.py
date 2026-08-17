@@ -7,6 +7,7 @@ from career import record_season_history, start_next_season
 from contracts import calculate_wage_spend, renew_contract, requested_weekly_wage
 from data import CLUBS, CLUB_BUDGETS, CLUB_WAGE_BUDGETS, SQUADS, calculate_team_strength
 from fixtures import advance_gameweek, generate_fixtures, get_club_fixture
+from fitness import is_available
 from game import simulate_gameweek
 from league import create_league_table, get_sorted_league_table
 from progression import process_end_of_season
@@ -163,6 +164,7 @@ if st.button("Start Career"):
             st.session_state["career_squads"][selected_club]
         )
         st.session_state["recorded_stat_gameweeks"] = set()
+        st.session_state["processed_health_gameweeks"] = set()
         st.session_state["processed_seasons"] = set()
         st.session_state["season_number"] = 1
         st.session_state["career_history"] = []
@@ -240,6 +242,11 @@ if "active_club" in st.session_state:
             "Position": player["position"],
             "Age": player["age"],
             "Overall": player["overall"],
+            "Fitness": player.get("fitness", 100),
+            "Availability": (
+                f"Injured ({player.get('injury_gameweeks', 0)} GW)"
+                if player.get("injured", False) else "Available"
+            ),
             "Potential": player["potential"],
             "Wage": f"{format_money(player['wage'])}/week",
             "Contract": f"{player['contract_years']} year(s)",
@@ -267,9 +274,15 @@ if "active_club" in st.session_state:
 
     if not is_complete:
         st.subheader("Choose Your Starting XI")
+        available_players = [player for player in squad if is_available(player)]
+        if len(available_players) < 11:
+            st.error(
+                f"Only {len(available_players)} healthy players are available. "
+                "You cannot play until 11 eligible starters are available."
+            )
         selected_names = st.multiselect(
             "Select exactly 11 players",
-            [player["name"] for player in squad],
+            [player["name"] for player in available_players],
             key=f"starting_xi_{active_club}_{gameweek}",
         )
         selected_xi = [player for player in squad if player["name"] in selected_names]
@@ -296,6 +309,10 @@ if "active_club" in st.session_state:
                     st.session_state["completed_gameweeks"],
                     player_statistics=st.session_state["player_statistics"],
                     recorded_stat_gameweeks=st.session_state["recorded_stat_gameweeks"],
+                    user_squad=squad,
+                    processed_health_gameweeks=st.session_state[
+                        "processed_health_gameweeks"
+                    ],
                 )
                 st.rerun()
 
@@ -318,6 +335,13 @@ if "active_club" in st.session_state:
                         st.write(f"{event['player']} {event['minute']}'")
                 else:
                     st.write("None")
+                for event in result.get("injury_events", []):
+                    st.error(
+                        f"Injury: {event['player']} suffered a {event['injury']}. "
+                        f"Out for {event['gameweeks']} gameweek(s)."
+                    )
+                for player_name in result.get("recovery_events", []):
+                    st.success(f"{player_name} has recovered and is available again.")
             else:
                 st.write(scoreline)
 

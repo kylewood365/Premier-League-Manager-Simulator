@@ -4,6 +4,7 @@ import math
 import random
 
 from data import calculate_team_strength, get_best_starting_xi
+from fitness import is_available, process_gameweek_health
 from league import update_league_table
 from stats import assign_goalscorers, record_match_statistics
 
@@ -68,12 +69,16 @@ def simulate_gameweek(
     rng=None,
     player_statistics=None,
     recorded_stat_gameweeks=None,
+    user_squad=None,
+    processed_health_gameweeks=None,
 ):
     """Play all ten matches in a gameweek and update the table once."""
     if gameweek_number in completed_gameweeks:
         raise ValueError("This gameweek has already been completed.")
     if not 1 <= gameweek_number <= len(fixtures):
         raise ValueError("Invalid gameweek number.")
+    if any(not is_available(player) for player in user_starting_xi):
+        raise ValueError("Injured players cannot be selected in the starting XI.")
 
     user_strength = calculate_team_strength(user_starting_xi)
     strengths = {}
@@ -122,5 +127,20 @@ def simulate_gameweek(
                 )
         results.append(match)
 
+    health_events = {"injuries": [], "recoveries": [], "processed": False}
+    if user_squad is not None:
+        health_events = process_gameweek_health(
+            user_squad,
+            user_starting_xi,
+            gameweek_number,
+            processed_health_gameweeks
+            if processed_health_gameweeks is not None
+            else completed_gameweeks,
+            rng,
+        )
     completed_gameweeks.add(gameweek_number)
+    for match in results:
+        if user_club in (match["home_club"], match["away_club"]):
+            match["injury_events"] = health_events["injuries"]
+            match["recovery_events"] = health_events["recoveries"]
     return results

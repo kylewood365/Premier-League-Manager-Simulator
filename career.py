@@ -3,6 +3,7 @@
 import random
 
 from fixtures import generate_fixtures
+from fitness import reset_health_for_new_season
 from league import create_league_table
 from stats import reset_player_statistics
 
@@ -36,6 +37,8 @@ def start_next_season(state, clubs, rng=None):
     state["current_gameweek"] = 1
     state["completed_gameweeks"] = set()
     state["recorded_stat_gameweeks"] = set()
+    state["processed_health_gameweeks"] = set()
+    reset_health_for_new_season(state["career_squads"][state["active_club"]])
     state["player_statistics"] = reset_player_statistics(
         state["career_squads"][state["active_club"]]
     )

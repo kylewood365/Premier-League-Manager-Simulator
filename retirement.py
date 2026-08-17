@@ -60,6 +60,9 @@ def generate_youth_player(position, existing_names=(), rng=None):
         "value": calculate_player_value(overall, age),
         "wage": max(2_000, min(8_000, calculate_weekly_wage(overall, age) // 3)),
         "contract_years": rng.randint(2, 5),
+        "fitness": 100,
+        "injured": False,
+        "injury_gameweeks": 0,
     }
 
 

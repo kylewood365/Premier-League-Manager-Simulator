@@ -1,6 +1,7 @@
 """Football data used by the Premier League Manager Simulator."""
 
 from contracts import calculate_weekly_wage, starting_contract_years
+from fitness import effective_rating
 
 # Keeping the club list here gives the UI and squad data one shared source.
 CLUBS = [
@@ -138,6 +139,9 @@ def create_squad(surname, base_rating, rating_changes):
                 ),
                 "wage": calculate_weekly_wage(overall, STARTER_AGES[index], potential),
                 "contract_years": starting_contract_years(STARTER_AGES[index]),
+                "fitness": 100,
+                "injured": False,
+                "injury_gameweeks": 0,
             }
         )
 
@@ -157,6 +161,9 @@ def create_squad(surname, base_rating, rating_changes):
                 ),
                 "wage": calculate_weekly_wage(overall, SUBSTITUTE_AGES[index], potential),
                 "contract_years": starting_contract_years(SUBSTITUTE_AGES[index]),
+                "fitness": 100,
+                "injured": False,
+                "injury_gameweeks": 0,
             }
         )
     return squad
@@ -174,7 +181,7 @@ def calculate_team_strength(starting_xi):
     if len(starting_xi) != 11:
         raise ValueError("A starting XI must contain exactly 11 players.")
 
-    total_rating = sum(player["overall"] for player in starting_xi)
+    total_rating = sum(effective_rating(player) for player in starting_xi)
     return round(total_rating / 11, 1)
 
 
