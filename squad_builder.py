@@ -107,11 +107,11 @@ def squad_builder_css():
       repeating-linear-gradient(90deg,#0b3831 0,#0b3831 12.5%,#0d4036 12.5%,#0d4036 25%);
       border:1px solid rgba(115,220,190,.5)!important;border-radius:24px!important;
       box-shadow:inset 0 0 70px rgba(0,5,8,.6),0 22px 55px rgba(0,0,0,.34);position:relative;
-      overflow:hidden;padding:1.7rem 1.35rem!important;isolation:isolate}
+      overflow:hidden;padding:1.25rem 1.1rem!important;isolation:isolate}
     [class*="st-key-squad_pitch_"] > div{position:relative;z-index:2}
-    .squad-pitch-marker{height:0}.pitch-row-gap{height:clamp(.55rem,1.4vw,1.15rem)}
+    .squad-pitch-marker{height:0}.pitch-row-gap{height:clamp(.35rem,.8vw,.7rem)}
     .pitch-geometry,.pitch-geometry *{position:absolute;pointer-events:none;box-sizing:border-box}
-    .pitch-geometry{z-index:0!important;inset:14px!important;border:1px solid rgba(213,255,241,.34);border-radius:9px}
+    .pitch-geometry{position:absolute!important;z-index:0!important;inset:12px!important;width:auto!important;height:auto!important;border:1px solid rgba(213,255,241,.34);border-radius:9px}
     .pitch-halfway{left:0;right:0;top:50%;border-top:1px solid rgba(213,255,241,.3)}
     .pitch-circle{width:104px;height:104px;border:1px solid rgba(213,255,241,.3);border-radius:50%;left:50%;top:50%;transform:translate(-50%,-50%)}
     .pitch-spot{width:5px;height:5px;background:rgba(213,255,241,.5);border-radius:50%;left:50%;top:50%;transform:translate(-50%,-50%)}
@@ -121,11 +121,11 @@ def squad_builder_css():
     .pitch-six.top{top:-1px}.pitch-six.bottom{bottom:-1px}
     .pitch-goal{width:14%;height:8px;border:1px solid rgba(213,255,241,.34);left:43%}
     .pitch-goal.top{top:-9px}.pitch-goal.bottom{bottom:-9px}
-    [class*="st-key-squad_pitch_"] .stButton button{white-space:pre-line;width:100%;height:112px!important;min-height:112px!important;max-height:112px!important;
+    [class*="st-key-squad_pitch_"] .stButton button{white-space:pre-line;width:100%;height:102px!important;min-height:102px!important;max-height:102px!important;
       overflow:hidden;padding:.46rem .22rem;color:#ecf7f4;background:linear-gradient(160deg,rgba(8,29,39,.96),rgba(4,17,28,.98));
       border:1px solid rgba(83,189,168,.54);border-radius:15px 15px 19px 19px;font-size:clamp(.59rem,.9vw,.76rem);line-height:1.34;
       box-shadow:inset 0 1px rgba(255,255,255,.035),0 9px 22px rgba(0,0,0,.38);transition:.18s ease}
-    [class*="st-key-squad_pitch_"] .stButton button p{white-space:pre-line;overflow:hidden;max-height:96px;font-weight:750;letter-spacing:.035em}
+    [class*="st-key-squad_pitch_"] .stButton button p{white-space:pre-line;overflow:hidden;max-height:88px;font-weight:750;letter-spacing:.035em}
     [class*="st-key-squad_pitch_"] [class*="_empty"] button{color:#44daa7;background:linear-gradient(160deg,rgba(7,29,36,.76),rgba(4,17,27,.82));border-style:dashed;border-color:rgba(70,202,165,.46);font-size:.8rem}
     [class*="st-key-squad_pitch_"] [class*="_filled"] button{border-color:rgba(91,190,181,.62)}
     [class*="st-key-squad_pitch_"] [class*="_oop"] button{border-color:rgba(242,177,67,.8);box-shadow:inset 0 -3px rgba(242,177,67,.2),0 9px 22px rgba(0,0,0,.38)}
