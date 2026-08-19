@@ -71,15 +71,27 @@ def _initials(name):
     return "".join(part[0] for part in name.split()[:2]).upper()
 
 
+def _short_name(name, limit=15):
+    """Keep tactical-card names compact without changing stored player data."""
+    if len(name) <= limit:
+        return name
+    parts = name.split()
+    shortened = f"{parts[0][0]}. {parts[-1]}" if len(parts) > 1 else name
+    return shortened[:limit - 1] + "…" if len(shortened) > limit else shortened
+
+
 def _card_label(player, position, out_of_position=False, empty=False, compact=False):
     if empty:
         return f"＋\n{position}"
     warning = "\n⚠ OOP" if out_of_position else ""
     fitness = player.get("fitness")
-    fitness_text = f"  ·  {fitness}% FIT" if fitness is not None else ""
-    return (f"{position}  ·  {player.get('overall', '—')}\n"
-            f"{_initials(player['name'])}\n{player['name']}\n"
-            f"{player.get('position', '—')}{fitness_text}{warning}")
+    fitness_text = f"{fitness}% FIT" if fitness is not None else "FIT —"
+    if compact:
+        return (f"{player.get('overall', '—')}  ·  {player.get('position', position)}\n"
+                f"{_initials(player['name'])}\n{_short_name(player['name'], 11)}")
+    return (f"{player.get('overall', '—')}  ·  {position}\n"
+            f"◯  {_initials(player['name'])}  ◯\n{_short_name(player['name'])}\n"
+            f"{fitness_text}  ·  CHANGE{warning}")
 
 
 def squad_builder_css():
@@ -88,22 +100,44 @@ def squad_builder_css():
     <style>
     .squad-progress-head{display:flex;justify-content:space-between;align-items:center;margin:.8rem 0 .35rem;
       font-weight:900;letter-spacing:.09em}.squad-progress-head span:last-child{color:#35e0a1}
-    .squad-progress{height:5px;background:#132b35;border-radius:9px;overflow:hidden;margin-bottom:.8rem}
+    .squad-progress{height:5px;background:#132b35;border-radius:9px;overflow:hidden;margin-bottom:1rem}
     .squad-progress i{display:block;height:100%;background:linear-gradient(90deg,#35e0a1,#55a8ff);box-shadow:0 0 12px #35e0a1}
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.squad-pitch-marker){background:
-      linear-gradient(rgba(7,35,38,.82),rgba(5,27,34,.94)),repeating-linear-gradient(0deg,transparent 0 12.3%,rgba(68,170,128,.06) 12.5% 25%);
-      border:1px solid rgba(78,228,180,.45)!important;border-radius:22px!important;box-shadow:inset 0 0 45px rgba(0,0,0,.32),0 18px 45px rgba(0,0,0,.25);position:relative}
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.squad-pitch-marker):before{content:"";position:absolute;inset:12px;border:1px solid rgba(190,255,229,.22);border-radius:10px;pointer-events:none}
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.squad-pitch-marker):after{content:"";position:absolute;left:12px;right:12px;top:50%;border-top:1px solid rgba(190,255,229,.22);pointer-events:none}
-    .squad-pitch-marker{height:0}.pitch-row-gap{height:.18rem}
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.squad-pitch-marker) .stButton button{white-space:pre-line;width:100%;min-height:94px;padding:.35rem .18rem;color:#f5f8fb;
-      background:linear-gradient(155deg,rgba(14,49,58,.96),rgba(6,22,34,.98));border:1px solid rgba(72,225,177,.58);font-size:clamp(.62rem,1vw,.78rem);line-height:1.25;box-shadow:0 8px 18px rgba(0,0,0,.34)}
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.squad-pitch-marker) .stButton button:hover{color:white;background:linear-gradient(155deg,#123f47,#092837);transform:translateY(-2px)}
+    [class*="st-key-squad_pitch_"]{background:
+      linear-gradient(180deg,rgba(2,18,18,.12),rgba(1,12,18,.28)),
+      repeating-linear-gradient(90deg,#0b3831 0,#0b3831 12.5%,#0d4036 12.5%,#0d4036 25%);
+      border:1px solid rgba(115,220,190,.5)!important;border-radius:24px!important;
+      box-shadow:inset 0 0 70px rgba(0,5,8,.6),0 22px 55px rgba(0,0,0,.34);position:relative;
+      overflow:hidden;padding:1.7rem 1.35rem!important;isolation:isolate}
+    [class*="st-key-squad_pitch_"] > div{position:relative;z-index:2}
+    .squad-pitch-marker{height:0}.pitch-row-gap{height:clamp(.55rem,1.4vw,1.15rem)}
+    .pitch-geometry,.pitch-geometry *{position:absolute;pointer-events:none;box-sizing:border-box}
+    .pitch-geometry{z-index:0!important;inset:14px!important;border:1px solid rgba(213,255,241,.34);border-radius:9px}
+    .pitch-halfway{left:0;right:0;top:50%;border-top:1px solid rgba(213,255,241,.3)}
+    .pitch-circle{width:104px;height:104px;border:1px solid rgba(213,255,241,.3);border-radius:50%;left:50%;top:50%;transform:translate(-50%,-50%)}
+    .pitch-spot{width:5px;height:5px;background:rgba(213,255,241,.5);border-radius:50%;left:50%;top:50%;transform:translate(-50%,-50%)}
+    .pitch-box{width:48%;height:13%;border:1px solid rgba(213,255,241,.3);left:26%}
+    .pitch-box.top{top:-1px}.pitch-box.bottom{bottom:-1px}
+    .pitch-six{width:23%;height:5.5%;border:1px solid rgba(213,255,241,.3);left:38.5%}
+    .pitch-six.top{top:-1px}.pitch-six.bottom{bottom:-1px}
+    .pitch-goal{width:14%;height:8px;border:1px solid rgba(213,255,241,.34);left:43%}
+    .pitch-goal.top{top:-9px}.pitch-goal.bottom{bottom:-9px}
+    [class*="st-key-squad_pitch_"] .stButton button{white-space:pre-line;width:100%;height:112px!important;min-height:112px!important;max-height:112px!important;
+      overflow:hidden;padding:.46rem .22rem;color:#ecf7f4;background:linear-gradient(160deg,rgba(8,29,39,.96),rgba(4,17,28,.98));
+      border:1px solid rgba(83,189,168,.54);border-radius:15px 15px 19px 19px;font-size:clamp(.59rem,.9vw,.76rem);line-height:1.34;
+      box-shadow:inset 0 1px rgba(255,255,255,.035),0 9px 22px rgba(0,0,0,.38);transition:.18s ease}
+    [class*="st-key-squad_pitch_"] .stButton button p{white-space:pre-line;overflow:hidden;max-height:96px;font-weight:750;letter-spacing:.035em}
+    [class*="st-key-squad_pitch_"] [class*="_empty"] button{color:#44daa7;background:linear-gradient(160deg,rgba(7,29,36,.76),rgba(4,17,27,.82));border-style:dashed;border-color:rgba(70,202,165,.46);font-size:.8rem}
+    [class*="st-key-squad_pitch_"] [class*="_filled"] button{border-color:rgba(91,190,181,.62)}
+    [class*="st-key-squad_pitch_"] [class*="_oop"] button{border-color:rgba(242,177,67,.8);box-shadow:inset 0 -3px rgba(242,177,67,.2),0 9px 22px rgba(0,0,0,.38)}
+    [class*="st-key-squad_pitch_"] .stButton button:hover{color:white;border-color:#42dfa8;background:linear-gradient(155deg,#103c43,#071f2e);transform:translateY(-2px);box-shadow:0 0 0 1px rgba(66,223,168,.2),0 11px 25px rgba(0,0,0,.42)}
     .selector-title{margin-top:1rem;padding:.7rem 1rem;border-left:3px solid #35e0a1;background:rgba(9,29,41,.75);font-weight:900;letter-spacing:.1em}
     .squad-bench-marker{height:0}
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.squad-bench-marker){background:rgba(7,22,34,.86);border:1px solid rgba(78,228,180,.24)!important;border-radius:16px!important}
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.squad-bench-marker) .stButton button{white-space:pre-line;width:100%;min-height:86px;padding:.3rem .12rem;color:#f5f8fb;background:linear-gradient(155deg,rgba(14,49,58,.96),rgba(6,22,34,.98));border:1px solid rgba(72,225,177,.46);font-size:clamp(.58rem,.9vw,.72rem);line-height:1.2}
-    @media(max-width:700px){[data-testid="stVerticalBlockBorderWrapper"]:has(.squad-pitch-marker) .stButton button{min-height:76px;font-size:.55rem;padding:.15rem}}
+    [class*="st-key-squad_bench_"]{background:linear-gradient(145deg,rgba(6,21,33,.94),rgba(8,35,39,.84));border:1px solid rgba(78,190,165,.28)!important;border-radius:17px!important;padding:.9rem!important}
+    [class*="st-key-squad_bench_"] .stButton button{white-space:pre-line;width:100%;height:88px!important;min-height:88px!important;max-height:88px!important;overflow:hidden;padding:.3rem .1rem;color:#eaf5f2;background:linear-gradient(155deg,rgba(11,37,46,.96),rgba(5,20,31,.98));border:1px solid rgba(72,185,160,.44);border-radius:12px 12px 15px 15px;font-size:clamp(.53rem,.78vw,.68rem);line-height:1.2}
+    [class*="st-key-squad_bench_"] .stButton button p{white-space:pre-line;overflow:hidden;max-height:76px}
+    [class*="st-key-squad_bench_"] [class*="_empty"] button{color:#43d7a4;border-style:dashed;background:rgba(5,22,31,.72)}
+    [class*="st-key-squad_bench_"] .stButton button:hover{border-color:#42dfa8;background:#0d343b;transform:translateY(-2px)}
+    @media(max-width:700px){[class*="st-key-squad_pitch_"]{padding:1rem .55rem!important}[class*="st-key-squad_pitch_"] .stButton button{height:88px!important;min-height:88px!important;max-height:88px!important;font-size:.52rem;padding:.12rem}.pitch-circle{width:72px;height:72px}.pitch-row-gap{height:.35rem}[class*="st-key-squad_bench_"]{overflow-x:auto}}
     </style>"""
 
 
@@ -125,17 +159,33 @@ def render_squad_builder(st, players, formation, selected_key, bench_key, disabl
         f'{"✓" if complete else "SELECTED"}</span></div><div class="squad-progress"><i style="width:{selected_count / 11 * 100:.1f}%"></i></div>',
         unsafe_allow_html=True,
     )
-    with st.container(border=True):
-        st.markdown('<div class="squad-pitch-marker"></div>', unsafe_allow_html=True)
-        for row in formation_slots(formation):
+    with st.container(border=True, key=f"squad_pitch_{selected_key}"):
+        st.markdown(
+            '<div class="squad-pitch-marker"></div><div class="pitch-geometry">'
+            '<i class="pitch-halfway"></i><i class="pitch-circle"></i><i class="pitch-spot"></i>'
+            '<i class="pitch-box top"></i><i class="pitch-box bottom"></i>'
+            '<i class="pitch-six top"></i><i class="pitch-six bottom"></i>'
+            '<i class="pitch-goal top"></i><i class="pitch-goal bottom"></i></div>',
+            unsafe_allow_html=True,
+        )
+        rows = formation_slots(formation)
+        for row_index, row in enumerate(rows):
             side = max(0.12, (5 - len(row)) / 2)
             columns = st.columns([side] + [1] * len(row) + [side], gap="small")
             for column, slot in zip(columns[1:-1], row):
                 identifier = assignments.get(slot["key"])
                 player = by_id.get(identifier)
-                label = _card_label(player, slot["label"], player is not None and not is_position_match(player, slot), empty=player is None)
-                if column.button(label, key=f"pick_{selected_key}_{slot['key']}", disabled=disabled, use_container_width=True):
+                out_of_position = player is not None and not is_position_match(player, slot)
+                label = _card_label(player, slot["label"], out_of_position, empty=player is None)
+                card_state = "empty" if player is None else ("oop" if out_of_position else "filled")
+                if column.button(
+                    label, key=f"pick_{selected_key}_{slot['key']}_{card_state}",
+                    help=(f"Change {player['name']}" if player else f"Select a {slot['label']}"),
+                    disabled=disabled, use_container_width=True,
+                ):
                     st.session_state[active_key] = slot["key"]
+            if row_index < len(rows) - 1:
+                st.markdown('<div class="pitch-row-gap"></div>', unsafe_allow_html=True)
 
     flat_slots = [slot for row in formation_slots(formation) for slot in row]
     active_slot = next((slot for slot in flat_slots if slot["key"] == st.session_state.get(active_key)), None)
@@ -171,13 +221,18 @@ def render_squad_builder(st, players, formation, selected_key, bench_key, disabl
                  if identifier in by_id and identifier not in assignments.values()][:7]
     st.session_state[bench_key] = bench_ids
     st.markdown(f'<div class="squad-progress-head"><span>SUBSTITUTES</span><span>{len(bench_ids)} / 7</span></div>', unsafe_allow_html=True)
-    with st.container(border=True):
+    with st.container(border=True, key=f"squad_bench_{bench_key}"):
         st.markdown('<div class="squad-bench-marker"></div>', unsafe_allow_html=True)
         bench_columns = st.columns(7, gap="small")
         for index, column in enumerate(bench_columns):
             player = by_id.get(bench_ids[index]) if index < len(bench_ids) else None
             label = _card_label(player, "SUB", empty=player is None, compact=True)
-            if column.button(label, key=f"benchslot_{bench_key}_{index}", disabled=disabled, use_container_width=True):
+            card_state = "filled" if player else "empty"
+            if column.button(
+                label, key=f"benchslot_{bench_key}_{index}_{card_state}",
+                help=(f"Change {player['name']}" if player else "Select a substitute"),
+                disabled=disabled, use_container_width=True,
+            ):
                 st.session_state[bench_active_key] = index
 
     bench_index = st.session_state.get(bench_active_key)
