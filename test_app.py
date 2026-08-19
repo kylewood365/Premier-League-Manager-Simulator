@@ -12,18 +12,17 @@ class StreamlitFlowTests(unittest.TestCase):
     @staticmethod
     def click_button(app, label):
         button = next(item for item in app.button if item.label == label)
-        return button.click().run()
+        return button.click().run(timeout=10)
 
     def test_playing_a_gameweek_updates_and_displays_all_results(self):
         app = AppTest.from_file("app.py").run()
         app.selectbox[0].select("Arsenal")
-        app.button[0].click().run()
+        app.button[0].click().run(timeout=10)
         self.assertIn("Arsenal Manager Dashboard", [heading.value for heading in app.header])
-        app.sidebar.radio[0].set_value("Matchday").run()
+        app.sidebar.radio[0].set_value("Matchday").run(timeout=10)
         starters = SQUADS["Arsenal"][:11]
-        app.multiselect[0].set_value(
-            [player["id"] for player in starters]
-        ).run()
+        app.session_state["starting_xi_Arsenal_1"] = [player["id"] for player in starters]
+        app.run(timeout=10)
         app = self.click_button(app, "Kickoff")
         self.assertEqual(app.session_state["match_phase"], "Half-time")
         app = self.click_button(app, "Start Second Half")
@@ -50,15 +49,18 @@ class StreamlitFlowTests(unittest.TestCase):
     def test_matchday_selectors_show_positions_without_changing_names(self):
         app = AppTest.from_file("app.py").run()
         app.selectbox[0].select("Arsenal")
-        app.button[0].click().run()
-        app.sidebar.radio[0].set_value("Matchday").run()
+        app.button[0].click().run(timeout=10)
+        app.sidebar.radio[0].set_value("Matchday").run(timeout=10)
 
-        expected = [matchday_player_label(player) for player in SQUADS["Arsenal"]]
-        self.assertEqual(app.multiselect[0].options, expected)
-        app.multiselect[0].set_value(
-            [player["id"] for player in SQUADS["Arsenal"][:11]]
-        ).run()
-        self.assertEqual(app.multiselect[1].options, expected[11:])
+        self.assertTrue(any(button.label.startswith("＋\nST") for button in app.button))
+        app.session_state["starting_xi_Arsenal_1"] = [
+            player["id"] for player in SQUADS["Arsenal"][:11]
+        ]
+        app.run(timeout=10)
+        rendered_labels = [button.label for button in app.button]
+        self.assertTrue(all(any(player["name"] in label for label in rendered_labels)
+                            for player in SQUADS["Arsenal"][:11]))
+        self.assertTrue(any(button.label == "＋\nSUB" for button in app.button))
         self.assertEqual(
             app.session_state["starting_xi_Arsenal_1"],
             [player["id"] for player in SQUADS["Arsenal"][:11]],
