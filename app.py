@@ -45,6 +45,7 @@ from real_world_data import (
 )
 from player_ratings import create_simulator_player
 from real_career import REAL_DATA_SEASON, build_real_career_snapshot
+from squad_builder import render_squad_builder
 
 
 def matchday_player_label(player):
@@ -783,11 +784,12 @@ if "active_club" in st.session_state:
                 f"Only {len(available_players)} healthy players are available. "
                 "You cannot play until 11 eligible starters are available."
             )
-        formation = st.selectbox(
+        control_columns = st.columns(2)
+        formation = control_columns[0].selectbox(
             "Formation", list(FORMATIONS), key=f"formation_{gameweek}",
             disabled=phase != "Kickoff",
         )
-        style = st.selectbox(
+        style = control_columns[1].selectbox(
             "Tactical style", TACTICAL_STYLES, key=f"style_{gameweek}",
             disabled=phase != "Kickoff",
         )
@@ -796,24 +798,13 @@ if "active_club" in st.session_state:
         def player_label(identifier):
             return matchday_player_label(available_by_id[identifier])
 
-        selected_ids = st.multiselect(
-            "Select exactly 11 players",
-            list(available_by_id),
-            format_func=player_label,
-            key=f"starting_xi_{active_club}_{gameweek}",
+        selected_key = f"starting_xi_{active_club}_{gameweek}"
+        bench_key = f"bench_{active_club}_{gameweek}"
+        selected_ids, bench_ids = render_squad_builder(
+            st, available_players, formation, selected_key, bench_key,
             disabled=phase != "Kickoff",
         )
-        selected_id_set = set(selected_ids)
         selected_xi = players_for_ids(squad, selected_ids)
-        bench_ids = st.multiselect(
-            "Bench (up to 7)",
-            [player["id"] for player in available_players
-             if player["id"] not in selected_id_set],
-            format_func=player_label,
-            key=f"bench_{active_club}_{gameweek}",
-            max_selections=7,
-            disabled=phase != "Kickoff",
-        )
         bench = players_for_ids(squad, bench_ids)
 
         selection_error = None
@@ -823,7 +814,11 @@ if "active_club" in st.session_state:
         except ValueError as error:
             selection_error = str(error)
         if phase == "Kickoff" and selection_error:
-            st.warning(selection_error)
+            missing = 11 - len(selected_xi)
+            if missing > 0:
+                st.caption(f"Select {missing} more player{'s' if missing != 1 else ''} to complete your starting XI.")
+            else:
+                st.warning(selection_error)
         elif phase == "Kickoff":
             strength = calculate_team_strength(selected_xi)
             st.success("Your starting XI is ready!")
